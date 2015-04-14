@@ -1,2 +1,3 @@
 # ECS150_S15
-# UCD ECS 150 course, Spring 2015
+# PROJECT 2 - Dev Branch
+# See Master Branch for final project
