@@ -19,12 +19,9 @@ TVMTick threadTick;
 
 //=========================INCLUDE FROM OTHER FILES=========================//
 
+TVMMainEntry VMLoadModule(const char *module);
 
 extern "C" {
-
-    TVMMainEntry VMLoadModule(const char *module);
-
-}
 
 //===============================ALARMCALLBACK===============================//
 
@@ -71,7 +68,7 @@ TVMStatus VMFileSeek(int filedescriptor, int offset, int whence, int *newoffset)
 
 TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) {
 
-    typedef void(*TVMMain)(int argc, char* argv[]);
+    typedef void(*TVMMain)(int argc, char *argv[]);
 
     TVMMain VMMain;                   // variable of function main
     VMMain = VMLoadModule(argv[0]);   // finds function pointer and returns it, NULL if nothing
@@ -100,7 +97,7 @@ TVMStatus VMThreadSleep(TVMTick tick) {
       AlarmCallback(NULL);              // get another alarm tick since not awake yet
 
     }
-    
+
     if (threadTick == 0) return VM_STATUS_SUCCESS;
     else return VM_STATUS_ERROR_INVALID_PARAMETER;
 
@@ -116,4 +113,5 @@ TVMStatus VMFileWrite(int filedescriptor, void *data, int *length) {
     write(filedescriptor, data, len);
     return VM_STATUS_SUCCESS;
 
+}
 }
