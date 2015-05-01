@@ -15,16 +15,18 @@
 #include <time.h>
 #include <string>
 
-TVMTick threadTick;
-
 //=========================INCLUDE FROM OTHER FILES=========================//
 
 
-extern "C" {
+extern "C"
+{
+  TVMMainEntry VMLoadModule(const char *module);
+  void VMUnloadModule(void);
+  TVMStatus VMFilePrint(int filedescriptor, const char *format, ...);
+  TVMTick threadTick;
+//    TVMMainEntry VMLoadModule(const char *module);
 
-    TVMMainEntry VMLoadModule(const char *module);
-
-}
+//}
 
 //===============================ALARMCALLBACK===============================//
 
@@ -117,3 +119,4 @@ TVMStatus VMFileWrite(int filedescriptor, void *data, int *length) {
     return VM_STATUS_SUCCESS;
 
 }
+} // end extern c bracket
