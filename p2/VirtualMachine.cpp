@@ -15,6 +15,8 @@
 #include <time.h>
 #include <string>
 
+TVMTick threadTick;
+
 //=========================INCLUDE FROM OTHER FILES=========================//
 
 TVMMainEntry VMLoadModule(const char *module);
@@ -114,4 +116,3 @@ TVMStatus VMFileWrite(int filedescriptor, void *data, int *length) {
 
 }
 }
-
