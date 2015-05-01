@@ -19,19 +19,8 @@
 
 TVMMainEntry VMLoadModule(const char *module);
 
-<<<<<<< HEAD
-extern "C" {
-=======
 extern "C"
 {
-  TVMMainEntry VMLoadModule(const char *module);
-  void VMUnloadModule(void);
-  TVMStatus VMFilePrint(int filedescriptor, const char *format, ...);
-  TVMTick threadTick;
-//    TVMMainEntry VMLoadModule(const char *module);
-
-//}
->>>>>>> origin/MDev
 
 //===============================ALARMCALLBACK===============================//
 
@@ -124,8 +113,5 @@ TVMStatus VMFileWrite(int filedescriptor, void *data, int *length) {
     return VM_STATUS_SUCCESS;
 
 }
-<<<<<<< HEAD
 }
-=======
-} // end extern c bracket
->>>>>>> origin/MDev
+
