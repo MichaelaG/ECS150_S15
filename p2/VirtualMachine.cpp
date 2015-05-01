@@ -1,4 +1,5 @@
 #include "VirtualMachine.h"
+#include "Machine.h"
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,12 +15,23 @@
 #include <time.h>
 #include <string>
 
-//======================INCLUDE VMLOADMODULE FROM UTILS======================//
+TVMTick threadTick;
+
+//=========================INCLUDE FROM OTHER FILES=========================//
 
 
 extern "C" {
 
     TVMMainEntry VMLoadModule(const char *module);
+
+}
+
+//===============================ALARMCALLBACK===============================//
+
+void AlarmCallback(void *param) {
+
+  threadTick = threadTick - 1;
+  //printf("%d\n", (int)threadTick);
 
 }
 
@@ -66,10 +78,33 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) {
     if (VMMain != NULL) {
 
       VMMain(argc, argv);               // call the function the function pointer is pointing to
+      MachineInitialize(machinetickms); // initialize the machine abstraction layer
+      MachineRequestAlarm(machinetickms, AlarmCallback, NULL); // request a machine alarm
       return VM_STATUS_SUCCESS;         // function call was a function that is defined
 
     }
     else return VM_STATUS_FAILURE;      // could not find the function the pointer "points" to
+
+}
+
+//==============================VMTHREADSLEEP================================//
+
+TVMStatus VMThreadSleep(TVMTick tick) {
+
+    threadTick = tick;
+    //printf("%d\n", (int)threadTick);
+
+    while (threadTick > 0) {            // check the tick time to see if sleep is over
+
+      //printf("good\n");
+      AlarmCallback(NULL);              // get another alarm tick since not awake yet
+
+    }
+    
+    if (threadTick == 0) return VM_STATUS_SUCCESS;
+    else return VM_STATUS_ERROR_INVALID_PARAMETER;
+
+    // schedule now that the thread is awake
 
 }
 
