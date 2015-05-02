@@ -14,7 +14,7 @@ void VMMain(int argc, char *argv[]){
     TVMThreadID VMThreadID;
     TVMThreadState VMState;
     VMPrint("VMMain creating thread.\n");
-    VMThreadCreate(VMThread, NULL, 0x100000, VM_THREAD_PRIORITY_NORMAL, &VMThreadID);
+    VMThreadCreate(VMThread, NULL, 0x100000, VM_THREAD_PRIORITY_LOW, &VMThreadID);
     VMPrint("VMMain getting thread state: ");
     VMThreadState(VMThreadID, &VMState);
     switch(VMState){
@@ -33,6 +33,5 @@ void VMMain(int argc, char *argv[]){
     VMPrint("VMMain going to sleep 50\n");
     VMThreadSleep(50);
     VMPrint("VMMain Awake\nGoodbye\n");
-    
-}
 
+}
