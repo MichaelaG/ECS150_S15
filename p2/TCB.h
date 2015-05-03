@@ -1,12 +1,11 @@
 #ifndef TCB_H
 #define TCB_H
-
 #include "VirtualMachine.h"
 
 class TCB {
 
   public:
-          TVMThreadIDRef threadID;
+          TVMThreadID threadID;
           TVMThreadPriority threadPriority;
           TVMThreadState threadStackState;
           TVMMemorySize threadStackSize;
