@@ -20,19 +20,19 @@
 
 using namespace std;
 
-TVMTick threadTick;
-TCB currentThread;
-vector<TCB>::iterator itr;
-vector<TCB> highPriority;
-vector<TCB> mediumPriority;
-vector<TCB> lowPriority;
-vector<TCB> bufferPriority;
-vector<TCB> ready;
-vector<TCB> waiting;
-vector<TCB> running;
-vector<TCB> dead;
-vector<TCB> sleeping;
-vector<TCB> allThreads;
+//TVMTick threadTick;
+TCB* currentThread = 0;
+vector<TCB*>::iterator itr;
+vector<TCB*> highPriority;
+vector<TCB*> mediumPriority;
+vector<TCB*> lowPriority;
+vector<TCB*> bufferPriority;
+vector<TCB*> ready;
+vector<TCB*> waiting;
+vector<TCB*> running;
+vector<TCB*> dead;
+vector<TCB*> sleeping;
+vector<TCB*> allThreads;
 
 //=========================INCLUDE FROM OTHER FILES=========================//
 
@@ -45,7 +45,69 @@ extern "C"
 
 void AlarmCallback(void *param) {
 
-  threadTick = threadTick - 1;
+  cout << waiting.size() << endl;
+
+  for (int i = 0; i < (int)waiting.size(); i++) {
+    waiting[i]->threadWaitTicks = waiting[i]->threadWaitTicks - 1;
+    cout << i << " " << waiting[i]->threadWaitTicks << endl;
+    if (waiting[i]->threadWaitTicks == 0) {
+
+        waiting[i]->threadStackState = VM_THREAD_STATE_READY;
+        if (waiting[i]->threadPriority == 3) {
+
+          itr = highPriority.begin();
+          highPriority.insert(itr, waiting[i]);
+
+        }
+        else if (waiting[i]->threadPriority == 2) {
+
+          itr = mediumPriority.begin();
+          mediumPriority.insert(itr, waiting[i]);
+
+        }
+        else {
+
+          itr = lowPriority.begin();
+          lowPriority.insert(itr, waiting[i]);
+
+        }
+        itr = waiting.begin() + i;
+        waiting.erase(itr);
+        i = i - 1;
+    }
+  }
+
+  if (highPriority.empty() != 1) {
+
+    TCB* firstInVector = new TCB;
+    firstInVector = highPriority.back();
+    firstInVector->threadStackState = VM_THREAD_STATE_READY;
+    highPriority.pop_back();
+    MachineContextSwitch(currentThread->threadContext, firstInVector->threadContext);
+    currentThread = firstInVector;
+
+  }
+  else if (mediumPriority.empty() != 1) {
+
+    TCB* firstInVector = new TCB;
+    firstInVector = mediumPriority.back();
+    firstInVector->threadStackState = VM_THREAD_STATE_READY;
+    mediumPriority.pop_back();
+    MachineContextSwitch(currentThread->threadContext, firstInVector->threadContext);
+    currentThread = firstInVector;
+
+  }
+  else if (lowPriority.empty() != 1) {
+
+    TCB* firstInVector = new TCB;
+    firstInVector = lowPriority.back();
+    firstInVector->threadStackState = VM_THREAD_STATE_READY;
+    lowPriority.pop_back();
+    MachineContextSwitch(currentThread->threadContext, firstInVector->threadContext);
+    currentThread = firstInVector;
+
+  }
+
   //printf("%d\n", (int)threadTick);
   //SHOULD CHECK IF
   // TCB.waitingticks is >0, if it is then decrement
@@ -91,7 +153,7 @@ void VMIdle(void*){
   {
     //do nothing;
   }
-  
+
 }
 
 //==================================VMSTART==================================//
@@ -104,14 +166,14 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) {
     TVMMain VMMain;                   // variable of function main
     VMMain = VMLoadModule(argv[0]);   // finds function pointer and returns it, NULL if nothing
     if (VMMain != NULL) {
-      VMThreadCreate(&VMIdle, NULL, 0x100, 1, tidIdle);
+      VMThreadCreate(&VMIdle, NULL, 0x10000, 1, tidIdle);
       //cout << "\tACTIVATING IDLE THREAD\n";
       VMThreadActivate(*tidIdle);
       //cout << "TID IDLE = " << *tidIdle << endl;
 
       VMMain(argc, argv);               // call the function the function pointer is pointing to
       MachineInitialize(machinetickms); // initialize the machine abstraction layer
-      MachineRequestAlarm(machinetickms, AlarmCallback, NULL); // request a machine alarm
+      MachineRequestAlarm(tickms*1000, AlarmCallback, NULL); // request a machine alarm
       //MachineContextCreate(allThreads[*tidIdle].threadContext, allThreads[*tidIdle].threadEntryFnct,
       //  allThreads[*tidIdle].threadEntryParam, allThreads[*tidIdle].threadBaseStackPtr, allThreads[*tidIdle].threadStackSize);
       //currentThread = allThreads[*tidIdle];
@@ -126,40 +188,55 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) {
 
 //============================VMTHREADACTIVATE===============================//
 
+void VMThreadSkeleton(void *param);
 
 TVMStatus VMThreadActivate(TVMThreadID thread){
 
   TMachineSignalState OldState;
   MachineSuspendSignals(&OldState);
 
-  int flag = 0;
-  TCB nextThreadToSchedule;
+  //cout << "enter activate" << endl;
+  //cout << "id " << thread << endl;
 
-  allThreads[thread].threadStackState = VM_THREAD_STATE_READY;
+  int flag = 0;
+  TCB* nextThreadToSchedule = new TCB;
+  currentThread = allThreads[allThreads.size() - thread - 1];
+
+  //cout << "middle" << endl;
+  //cout << currentThread->threadStackState << endl;
+
+  currentThread->threadStackState = VM_THREAD_STATE_READY;
+
+  //cout << currentThread->threadStackState << endl;
+  //cout << allThreads[allThreads.size() - thread - 1]->threadStackState << endl;
+
+  //allThreads[allThreads.size() - thread]->threadPriority = currentThread->threadPriority + 1;
+  //cout << allThreads[allThreads.size() - thread - 1]->threadPriority << endl;
 
   //cout << "\tSTARTING SCHEDULING\n";
 
   //--------------Scheduling--------------// @495 stuff
   // IF STATE IS STILL READY, ADD TO THAT QUEUE
-  if (allThreads[thread].threadStackState == VM_THREAD_STATE_READY) {
+  if (currentThread->threadStackState == VM_THREAD_STATE_READY) {
 
-    if (allThreads[thread].threadPriority == 3) {
+    if (currentThread->threadPriority == 3) {
 
       itr = highPriority.begin();
-      highPriority.insert(itr, allThreads[thread]);
+      highPriority.insert(itr, currentThread);
 
     }
-    else if (allThreads[thread].threadPriority == 2) {
+    else if (currentThread->threadPriority == 2) {
 
       itr = mediumPriority.begin();
-      mediumPriority.insert(itr, allThreads[thread]);
+      mediumPriority.insert(itr, currentThread);
 
     }
 
-    else if (allThreads[thread].threadPriority == 1){
+    else if (currentThread->threadPriority == 1){
 
       itr = lowPriority.begin();
-      lowPriority.insert(itr, allThreads[thread]);
+      lowPriority.insert(itr, currentThread);
+      //cout << "here" << endl;
     }
   }
 
@@ -167,21 +244,21 @@ TVMStatus VMThreadActivate(TVMThreadID thread){
 
   // FIND HIGHEST PRIORITY READY THREAD
   for (int i = 0; i < (int)highPriority.size() && flag == 0; i++) {
-    if (highPriority[i].threadStackState == VM_THREAD_STATE_READY) {
+    if (highPriority[i]->threadStackState == VM_THREAD_STATE_READY) {
       flag = 1;
       nextThreadToSchedule = highPriority[i];
     }
   }
 
   for (int i = 0; i < (int)mediumPriority.size() && flag == 0; i++) {
-    if (mediumPriority[i].threadStackState == VM_THREAD_STATE_READY) {
+    if (mediumPriority[i]->threadStackState == VM_THREAD_STATE_READY) {
       flag = 1;
       nextThreadToSchedule = mediumPriority[i];
     }
   }
 
   for (int i = 0; i < (int)lowPriority.size() && flag == 0; i++) {
-    if (lowPriority[i].threadStackState == VM_THREAD_STATE_READY) {
+    if (lowPriority[i]->threadStackState == VM_THREAD_STATE_READY) {
       flag = 1;
       nextThreadToSchedule = lowPriority[i];
     }
@@ -190,24 +267,31 @@ TVMStatus VMThreadActivate(TVMThreadID thread){
   //cout << "\tFOUND NEXT THREAD TO SCHEDULE\n";
 
   // SET THE TCB OF NEW THREAD TO RUNNING
-  nextThreadToSchedule.threadStackState = VM_THREAD_STATE_RUNNING;
+  //nextThreadToSchedule->threadStackState = VM_THREAD_STATE_RUNNING;
 
   //cout << "\tSWITCHED TO RUNNING STATE\n";
-  if(currentThread.threadContext == NULL) {
+  if(currentThread->threadContext == NULL) {
     //cout << "\tCONTEXT DOESNT EXIST\n";
-    MachineContextCreate(nextThreadToSchedule.threadContext, nextThreadToSchedule.threadEntryFnct,
-      nextThreadToSchedule.threadEntryParam, nextThreadToSchedule.threadBaseStackPtr, nextThreadToSchedule.threadStackSize);
+    MachineContextCreate(nextThreadToSchedule->threadContext, VMThreadSkeleton,
+      nextThreadToSchedule->threadEntryParam, nextThreadToSchedule->threadBaseStackPtr, nextThreadToSchedule->threadStackSize);
+    //MachineContextCreate(nextThreadToSchedule->threadContext, nextThreadToSchedule->threadEntryFnct,
+      //nextThreadToSchedule->threadEntryParam, nextThreadToSchedule->threadBaseStackPtr, nextThreadToSchedule->threadStackSize);
+    //cout << "create" << endl;
     currentThread = nextThreadToSchedule;
-    currentThread.threadStackState = VM_THREAD_STATE_RUNNING;
+    currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
   }
   else {
   // SWITCH CONTEXTS
     //cout << "\tCONTEXT SWITCH FUNCTION REACHED\n";
-    MachineContextSwitch(currentThread.threadContext, nextThreadToSchedule.threadContext);
-    currentThread.threadStackState = VM_THREAD_STATE_WAITING;
+    MachineContextSwitch(currentThread->threadContext, nextThreadToSchedule->threadContext);
+    //cout << "switch" << endl;
+    currentThread->threadStackState = VM_THREAD_STATE_WAITING;
+    //itr = waiting.begin();
+    //waiting.insert(itr, currentThread);
     currentThread = nextThreadToSchedule;
-    currentThread.threadStackState = VM_THREAD_STATE_RUNNING;
+    currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
   }
+  //cout << "end" << endl;
   return VM_STATUS_SUCCESS;
 
 
@@ -227,19 +311,23 @@ TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsiz
 
   SMachineContext *machineCtx = new SMachineContext();
 
+  //cout << "prio" << prio << endl;
+
   // SET STATE OF THE THREAD ENTERING
-  TCB newThread;
-  newThread.threadContext = machineCtx;
-  newThread.threadStackState = VM_THREAD_STATE_DEAD;
-  newThread.threadEntryParam = param;
+  TCB* newThread = new TCB;
+  newThread->threadContext = machineCtx;
+  newThread->threadStackState = VM_THREAD_STATE_DEAD;
+  newThread->threadEntryParam = param;
   //TVMThreadID *threadRef = new TVMThreadID;
   //*threadRef = allThreads.size();
-  newThread.threadID = allThreads.size();//threadRef;
+  newThread->threadID = allThreads.size();//threadRef;
   *tid =  allThreads.size();
-  newThread.threadPriority = prio;
-  newThread.threadStackSize = memsize;
-  newThread.threadEntryFnct = entry;
-  newThread.threadBaseStackPtr = new uint8_t[memsize];
+  newThread->threadPriority = prio;
+  newThread->threadStackSize = memsize;
+  newThread->threadEntryFnct = entry;
+  newThread->threadBaseStackPtr = new uint8_t[memsize];
+
+  //cout << "new" << newThread->threadPriority << endl;
 
   //if(newThread.threadStackState == VM_THREAD_STATE_DEAD)
   //  cout << newThread.threadID << " DEAD\n";
@@ -253,7 +341,7 @@ TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsiz
   MachineResumeSignals(&OldState);
 
   //if(newThread.threadStackState == VM_THREAD_STATE_DEAD)
-  //  cout << newThread.threadID <<" DEAD\n";
+    //cout << newThread->threadID <<" DEAD\n";
 
   return VM_STATUS_SUCCESS;
 
@@ -263,16 +351,57 @@ TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsiz
 
 TVMStatus VMThreadSleep(TVMTick tick) {
 
-    threadTick = tick;
-    //printf("%d\n", (int)threadTick);
+    if (tick == VM_TIMEOUT_INFINITE) return VM_STATUS_ERROR_INVALID_PARAMETER;
+    if (tick == VM_TIMEOUT_IMMEDIATE) {
 
-    while (threadTick > 0) {    // check the tick time to see if sleep is over
-      //printf("good\n");
+      currentThread->threadStackState = VM_THREAD_STATE_WAITING;
+      itr = waiting.begin();
+      waiting.insert(itr, currentThread);
+      if (currentThread->threadPriority == 3) {
+
+        TCB* firstInVector = new TCB;
+        firstInVector = highPriority[highPriority.size() - 1];
+        firstInVector->threadStackState = VM_THREAD_STATE_READY;
+        highPriority.pop_back();
+        itr = highPriority.begin();
+        highPriority.insert(itr, currentThread);
+        currentThread = firstInVector;
+      }
+      else if (currentThread->threadPriority == 2) {
+
+        TCB* firstInVector = new TCB;
+        firstInVector = mediumPriority[mediumPriority.size() - 1];
+        firstInVector->threadStackState = VM_THREAD_STATE_READY;
+        mediumPriority.pop_back();
+        itr = mediumPriority.begin();
+        mediumPriority.insert(itr, currentThread);
+        currentThread = firstInVector;
+      }
+      else {
+
+        TCB* firstInVector = new TCB;
+        firstInVector = lowPriority[lowPriority.size() - 1];
+        firstInVector->threadStackState = VM_THREAD_STATE_READY;
+        lowPriority.pop_back();
+        itr = lowPriority.begin();
+        lowPriority.insert(itr, currentThread);
+        currentThread = firstInVector;
+      }
+    }
+  else {
+    currentThread->threadWaitTicks = tick;
+    //printf("%d\n", (int)threadTick);
+    currentThread->threadStackState = VM_THREAD_STATE_WAITING;
+    itr = waiting.begin();
+    waiting.insert(itr, currentThread);
+    while (currentThread->threadWaitTicks > 0) {    // check the tick time to see if sleep is over
+      cout << "outside" << currentThread->threadWaitTicks << endl;
       AlarmCallback(NULL);         // get another alarm tick since not awake yet
     }
 
-    if (threadTick == 0) return VM_STATUS_SUCCESS;
-    else return VM_STATUS_ERROR_INVALID_PARAMETER;
+    return VM_STATUS_SUCCESS;
+    //else return VM_STATUS_ERROR_INVALID_PARAMETER;
+  }
 
     // schedule now that the thread is awake
 
@@ -280,10 +409,12 @@ TVMStatus VMThreadSleep(TVMTick tick) {
 
 //==============================VMTHREADSKELETON=============================//
 
-void VMThreadSkeleton(TVMThreadID thread) {
+void VMThreadSkeleton(void *param) {
 
-  allThreads[thread].threadEntryFnct(allThreads[thread].threadEntryParam);
-  VMThreadTerminate(thread);
+  cout << "Skeleton" << endl;
+  currentThread->threadEntryFnct(param);
+  MachineEnableSignals();
+  VMThreadTerminate(currentThread->threadID);
 
 }
 
@@ -296,9 +427,9 @@ TVMStatus VMThreadState(TVMThreadID thread, TVMThreadStateRef stateref){
     return VM_STATUS_ERROR_INVALID_PARAMETER;
   for(int i=0; i<(int)allThreads.size(); i++)
   {
-    if(allThreads[i].threadID == thread)
+    if(allThreads[i]->threadID == thread)
     {
-      *stateref = allThreads[i].threadStackState;
+      *stateref = allThreads[i]->threadStackState;
       return VM_STATUS_SUCCESS;
     }
   }
@@ -311,7 +442,7 @@ TVMStatus VMThreadState(TVMThreadID thread, TVMThreadStateRef stateref){
 
 TVMStatus VMThreadTerminate(TVMThreadID thread){
 
-  allThreads[thread].threadStackState = VM_THREAD_STATE_DEAD;
+  allThreads[allThreads.size() - thread - 1]->threadStackState = VM_THREAD_STATE_DEAD;
 
   return VM_STATUS_SUCCESS;
 
