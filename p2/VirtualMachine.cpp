@@ -45,11 +45,12 @@ extern "C"
 
 void AlarmCallback(void *param) {
 
-  cout << waiting.size() << endl;
+  //cout << waiting.size() << endl;
+  //cout << "wait length4 " << waiting.size() << endl;
 
   for (int i = 0; i < (int)waiting.size(); i++) {
     waiting[i]->threadWaitTicks = waiting[i]->threadWaitTicks - 1;
-    cout << i << " " << waiting[i]->threadWaitTicks << endl;
+    //cout << i << " " << waiting[i]->threadWaitTicks << endl;
     if (waiting[i]->threadWaitTicks == 0) {
 
         waiting[i]->threadStackState = VM_THREAD_STATE_READY;
@@ -108,6 +109,8 @@ void AlarmCallback(void *param) {
 
   }
 
+  //cout << "wait length4 " << waiting.size() << endl;
+
   //printf("%d\n", (int)threadTick);
   //SHOULD CHECK IF
   // TCB.waitingticks is >0, if it is then decrement
@@ -118,13 +121,18 @@ void AlarmCallback(void *param) {
 
 TVMStatus VMFileClose(int filedescriptor) {
 
-  return VM_STATUS_SUCCESS;
+  if (close(filedescriptor)) return VM_STATUS_SUCCESS;
+  else return VM_STATUS_FAILURE;
 
 }
 
 //================================VMFILEOPEN=================================//
 
 TVMStatus VMFileOpen(const char *filename, int flags, int mode, int *filedescriptor) {
+
+  if (filename == NULL || filedescriptor == NULL) return VM_STATUS_ERROR_INVALID_PARAMETER;
+
+  *filedescriptor = open(filename, flags, mode);
 
   return VM_STATUS_SUCCESS;
 
@@ -142,7 +150,19 @@ TVMStatus VMFileRead(int filedescriptor, void *data, int *length) {
 
 TVMStatus VMFileSeek(int filedescriptor, int offset, int whence, int *newoffset) {
 
+  //fseek(*filedescriptor, offset, whence);
+
   return VM_STATUS_SUCCESS;
+
+}
+
+//================================VMFILEWRITE================================//
+
+TVMStatus VMFileWrite(int filedescriptor, void *data, int *length) {
+
+    int len = *length;                  // length stored in an int to use in write system call
+    write(filedescriptor, data, len);
+    return VM_STATUS_SUCCESS;
 
 }
 
@@ -162,6 +182,8 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) {
 
     typedef void(*TVMMain)(int argc, char *argv[]);
 
+    //cout << "wait length3 " << waiting.size() << endl;
+
     TVMThreadIDRef tidIdle = new TVMThreadID;
     TVMMain VMMain;                   // variable of function main
     VMMain = VMLoadModule(argv[0]);   // finds function pointer and returns it, NULL if nothing
@@ -180,7 +202,7 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) {
       //NEED TO CHANGE PRIORITY OF IDLE TO 0 LATER
 
       return VM_STATUS_SUCCESS;         // function call was a function that is defined
-
+      //cout << "wait length3 " << waiting.size() << endl;
     }
     else return VM_STATUS_FAILURE;      // could not find the function the pointer "points" to
 
@@ -194,6 +216,8 @@ TVMStatus VMThreadActivate(TVMThreadID thread){
 
   TMachineSignalState OldState;
   MachineSuspendSignals(&OldState);
+
+  //cout << "wait length2 " << waiting.size() << endl;
 
   //cout << "enter activate" << endl;
   //cout << "id " << thread << endl;
@@ -286,12 +310,13 @@ TVMStatus VMThreadActivate(TVMThreadID thread){
     MachineContextSwitch(currentThread->threadContext, nextThreadToSchedule->threadContext);
     //cout << "switch" << endl;
     currentThread->threadStackState = VM_THREAD_STATE_WAITING;
-    //itr = waiting.begin();
-    //waiting.insert(itr, currentThread);
+    itr = waiting.begin();
+    waiting.insert(itr, currentThread);
     currentThread = nextThreadToSchedule;
     currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
   }
   //cout << "end" << endl;
+  //cout << "wait length2 " << waiting.size() << endl;
   return VM_STATUS_SUCCESS;
 
 
@@ -303,7 +328,7 @@ TVMStatus VMThreadActivate(TVMThreadID thread){
 
 TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsize,
   TVMThreadPriority prio, TVMThreadIDRef tid) {
-
+    //cout << "wait length1 " << waiting.size() << endl;
   if (tid == NULL || entry == NULL) return VM_STATUS_ERROR_INVALID_PARAMETER;
 
   TMachineSignalState OldState;
@@ -342,7 +367,7 @@ TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsiz
 
   //if(newThread.threadStackState == VM_THREAD_STATE_DEAD)
     //cout << newThread->threadID <<" DEAD\n";
-
+    //cout << "wait length1 " << waiting.size() << endl;
   return VM_STATUS_SUCCESS;
 
 }
@@ -352,11 +377,14 @@ TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsiz
 TVMStatus VMThreadSleep(TVMTick tick) {
 
     if (tick == VM_TIMEOUT_INFINITE) return VM_STATUS_ERROR_INVALID_PARAMETER;
+    TMachineSignalState OldState;
+    MachineSuspendSignals(&OldState);
     if (tick == VM_TIMEOUT_IMMEDIATE) {
 
       currentThread->threadStackState = VM_THREAD_STATE_WAITING;
       itr = waiting.begin();
       waiting.insert(itr, currentThread);
+      //cout << "wait length " << waiting.size() << endl;
       if (currentThread->threadPriority == 3) {
 
         TCB* firstInVector = new TCB;
@@ -394,15 +422,18 @@ TVMStatus VMThreadSleep(TVMTick tick) {
     currentThread->threadStackState = VM_THREAD_STATE_WAITING;
     itr = waiting.begin();
     waiting.insert(itr, currentThread);
+    //cout << "wait length " << waiting.size() << endl;
     while (currentThread->threadWaitTicks > 0) {    // check the tick time to see if sleep is over
-      cout << "outside" << currentThread->threadWaitTicks << endl;
+      //cout << "outside" << currentThread->threadWaitTicks << endl;
       AlarmCallback(NULL);         // get another alarm tick since not awake yet
+      //cout << "outside" << currentThread->threadWaitTicks << endl;
     }
 
     return VM_STATUS_SUCCESS;
     //else return VM_STATUS_ERROR_INVALID_PARAMETER;
   }
-
+  MachineResumeSignals(&OldState);
+  return VM_STATUS_SUCCESS;
     // schedule now that the thread is awake
 
 }
@@ -411,7 +442,7 @@ TVMStatus VMThreadSleep(TVMTick tick) {
 
 void VMThreadSkeleton(void *param) {
 
-  cout << "Skeleton" << endl;
+  //cout << "Skeleton" << endl;
   currentThread->threadEntryFnct(param);
   MachineEnableSignals();
   VMThreadTerminate(currentThread->threadID);
@@ -445,16 +476,6 @@ TVMStatus VMThreadTerminate(TVMThreadID thread){
   allThreads[allThreads.size() - thread - 1]->threadStackState = VM_THREAD_STATE_DEAD;
 
   return VM_STATUS_SUCCESS;
-
-}
-
-//================================VMFILEWRITE================================//
-
-TVMStatus VMFileWrite(int filedescriptor, void *data, int *length) {
-
-    int len = *length;                  // length stored in an int to use in write system call
-    write(filedescriptor, data, len);
-    return VM_STATUS_SUCCESS;
 
 }
 }
