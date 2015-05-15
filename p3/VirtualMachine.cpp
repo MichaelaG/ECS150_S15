@@ -186,42 +186,47 @@ void VMSchedule(TVMThreadID thread) {
 
   int flag = 0;
   TCB* nextThreadToSchedule = NULL;
-  currentThread = allThreads[allThreads.size() - thread - 1];
+  //currentThread = allThreads[allThreads.size() - thread - 1];
 
   //cout << "middle" << endl;
-  cout << currentThread->threadStackState << endl;
+  cout << "\tSTATE = " << allThreads[allThreads.size() - thread - 1]->threadStackState << endl;
 
-  currentThread->threadStackState = VM_THREAD_STATE_READY;
+  // if it is running
+  if(allThreads[allThreads.size() - thread - 1]->threadStackState == VM_THREAD_STATE_RUNNING)
+    allThreads[allThreads.size() - thread - 1]->threadStackState = VM_THREAD_STATE_READY;
 
-  if (currentThread->threadStackState == VM_THREAD_STATE_READY) {
+  if (allThreads[allThreads.size() - thread - 1]->threadStackState == VM_THREAD_STATE_READY) {
 
-    if (currentThread->threadPriority == 3) {
-
+    if (allThreads[allThreads.size() - thread - 1]->threadPriority == 3)
+    {
       itr = highPriority.begin();
-      highPriority.insert(itr, currentThread);
-
+      highPriority.insert(itr, allThreads[allThreads.size() - thread - 1]);
+      cout << "\tHIGH" << endl;
     }
-    else if (currentThread->threadPriority == 2) {
-
+    else if (allThreads[allThreads.size() - thread - 1]->threadPriority == 2)
+    {
       itr = mediumPriority.begin();
-      mediumPriority.insert(itr, currentThread);
+      mediumPriority.insert(itr, allThreads[allThreads.size() - thread - 1]);
+      cout << "\tMEDIUM" << endl;
 
     }
 
-    else if (currentThread->threadPriority == 1){
+    else if (allThreads[allThreads.size() - thread - 1]->threadPriority == 1){
 
       itr = lowPriority.begin();
-      lowPriority.insert(itr, currentThread);
-      //cout << "here" << endl;
+      lowPriority.insert(itr, allThreads[allThreads.size() - thread - 1]);
+      cout << "\tLOW" << endl;
     }
     else
-      //cout << "idle" << endl;
+    {
+      cout << "idle" << endl;
       itr = bufferPriority.begin();
-      bufferPriority.insert(itr, currentThread);
-      //cout << "end idle" << endl;
+      bufferPriority.insert(itr, allThreads[allThreads.size() - thread - 1]);
+      cout << "end idle" << endl;
+    }
   }
 
-  //cout << "\tADDED THREAD TO PRIORITY QUEUE\n";
+  cout << "\tADDED THREAD TO PRIORITY QUEUE" << endl;
 
   // FIND HIGHEST PRIORITY READY THREAD
   for (int i = 0; i < (int)highPriority.size() && flag == 0; i++) {
@@ -244,36 +249,41 @@ void VMSchedule(TVMThreadID thread) {
       nextThreadToSchedule = lowPriority[i];
     }
   }
-
-  if (flag == 0) nextThreadToSchedule = bufferPriority[0];
-
-  //cout << "\tFOUND NEXT THREAD TO SCHEDULE\n";
+  cout << "\tFLAG = " << flag << endl;
+  if (flag == 0)
+    nextThreadToSchedule = bufferPriority[0];
+  cout << "\t" << currentThread << endl;
+  cout << "\tFOUND NEXT THREAD TO SCHEDULE " << nextThreadToSchedule << endl;
 
   // SET THE TCB OF NEW THREAD TO RUNNING
   //nextThreadToSchedule->threadStackState = VM_THREAD_STATE_RUNNING;
 
-  cout << "\tSWITCHED TO RUNNING STATE\n";
-  if(currentThread->threadContext == NULL) {
-    cout << "\tCONTEXT DOESNT EXIST\n";
+  cout << "\tSWITCHED TO RUNNING STATE" << endl;
+  if(allThreads[allThreads.size() - thread - 1]->threadContext == NULL) {
+    cout << "\tCONTEXT DOESNT EXIST"<<endl;
     MachineContextCreate(nextThreadToSchedule->threadContext, VMThreadSkeleton,
       nextThreadToSchedule->threadEntryParam, nextThreadToSchedule->threadBaseStackPtr, nextThreadToSchedule->threadStackSize);
     //MachineContextCreate(nextThreadToSchedule->threadContext, nextThreadToSchedule->threadEntryFnct,
       //nextThreadToSchedule->threadEntryParam, nextThreadToSchedule->threadBaseStackPtr, nextThreadToSchedule->threadStackSize);
     cout << "create" << endl;
-    currentThread = nextThreadToSchedule;
-    currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
+    allThreads[allThreads.size() - thread - 1] = nextThreadToSchedule;
+    allThreads[allThreads.size() - thread - 1]->threadStackState = VM_THREAD_STATE_RUNNING;
   }
   else {
   // SWITCH CONTEXTS
-    cout << "\tCONTEXT SWITCH FUNCTION REACHED\n";
-    cout << currentThread->threadContext << endl;
-    cout << nextThreadToSchedule->threadContext << endl;
-    MachineContextSwitch(currentThread->threadContext, nextThreadToSchedule->threadContext);
-    cout << "switch" << endl;
-    currentThread->threadStackState = VM_THREAD_STATE_WAITING;
-    itr = waiting.begin();
-    waiting.insert(itr, currentThread);
+    cout << "\tCONTEXT SWITCH FUNCTION REACHED"<<endl ;
+    TCB* prev = currentThread;
+    cout << "\tDUMB"<<endl;
     currentThread = nextThreadToSchedule;
+    cout << "\tDUMB"<<endl;
+    cout << "\t CURRENT THREAD CONTEXT " << prev->threadContext << endl;
+    cout << "\t NEXT THREAD CONTEXT    " << currentThread->threadContext << endl;
+    MachineContextSwitch(prev->threadContext, currentThread->threadContext);
+    cout << "switch" << endl;
+    prev->threadStackState = VM_THREAD_STATE_WAITING;
+    itr = waiting.begin();
+    waiting.insert(itr, prev);
+    //currentThread = nextThreadToSchedule;
     currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
   }
 
@@ -288,7 +298,6 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) {
     //MachineContextCreate(allThreads[*tidIdle].threadContext, allThreads[*tidIdle].threadEntryFnct,
     //  allThreads[*tidIdle].threadEntryParam, allThreads[*tidIdle].threadBaseStackPtr, allThreads[*tidIdle].threadStackSize);
     //currentThread = allThreads[*tidIdle];
-    //NEED TO CHANGE PRIORITY OF IDLE TO 0 LATER
 
     typedef void(*TVMMain)(int argc, char *argv[]);
 
@@ -300,7 +309,7 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) {
     TVMMain VMMain;                   // variable of function main
     VMMain = VMLoadModule(argv[0]);   // finds function pointer and returns it, NULL if nothing
     if (VMMain != NULL) {
-      VMThreadCreate(&VMIdle, NULL, 0x10000, VM_THREAD_PRIORITY_LOWLOW, tidIdle);
+      VMThreadCreate(&VMIdle, NULL, 0x100000, VM_THREAD_PRIORITY_LOWLOW, tidIdle);
       //cout << "\tACTIVATING IDLE THREAD\n";
       VMThreadActivate(*tidIdle);
       //cout << "TID IDLE = " << *tidIdle << endl;
@@ -344,6 +353,8 @@ TVMStatus VMThreadActivate(TVMThreadID thread){
       allThreads[allThreads.size() - thread - 1]->threadBaseStackPtr,
         allThreads[allThreads.size() - thread - 1]->threadStackSize);
 
+  cout << "\tGOING TO VMSCHEDULE\n";
+  allThreads[allThreads.size() - thread - 1]->threadStackState = VM_THREAD_STATE_READY;
   VMSchedule(thread);
 
   //cout << "end" << endl;
@@ -360,7 +371,8 @@ TVMStatus VMThreadActivate(TVMThreadID thread){
 TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsize,
   TVMThreadPriority prio, TVMThreadIDRef tid) {
     //cout << "wait length1 " << waiting.size() << endl;
-  if (tid == NULL || entry == NULL) return VM_STATUS_ERROR_INVALID_PARAMETER;
+  if (tid == NULL || entry == NULL)
+    return VM_STATUS_ERROR_INVALID_PARAMETER;
 
   TMachineSignalState OldState;
   MachineSuspendSignals(&OldState);
