@@ -47,24 +47,71 @@ TVMMainEntry VMLoadModule(const char *module);
 
 extern "C" void VMPrioPush(TCB *thread)
 {
+	cout << "\tStart VMPrioPush" << endl;
 	// pushing to proper priorities vectors
 	if(thread->threadPriority == VM_THREAD_PRIORITY_LOW)
+	{
 		lowPriority.push_back(thread);
+		cout << "\t   pushed to lowPrio" << endl;
+	}
 	if(thread->threadPriority == VM_THREAD_PRIORITY_NORMAL)
+	{
 		normalPriority.push_back(thread);
+		cout << "\t   pushed to normalPrio" << endl;
+	}
 	if(thread->threadPriority == VM_THREAD_PRIORITY_HIGH)
+	{
 		highPriority.push_back(thread);
+		cout << "\t   pushed to highPrio" << endl;
+	}
+	cout << "\t-End VMPrioPush" << endl;
 }  // end  VMPrioPush --------------------------------------------------//
 
 extern "C" void VMSchedule()
 {
-	cout << "\tenter Schedule" << endl;
+	cout << "\tStart VMShedule" << endl;
+
+	cout << "currentThread: tid=" << currentThread->threadID;
+	cout << " prio=" << currentThread->threadPriority << endl;
+	cout << "allThreads:" << endl;
+	for(int i=0; i<(int)allThreads.size();i++)
+	{
+		cout << "tID=" << allThreads[i]->threadID;
+		cout << " prio=" << allThreads[i]->threadPriority << endl;
+	}
+	cout << "highPrio:" << endl;
+	for(int i=0; i<(int)highPriority.size();i++)
+	{
+		cout << "tID=" << highPriority[i]->threadID;
+		cout << " prio=" << highPriority[i]->threadPriority << endl;
+	}
+	cout << "normalPrio:" << endl;
+	for(int i=0; i<(int)normalPriority.size();i++)
+	{
+		cout << "tID=" << normalPriority[i]->threadID;
+		cout << " prio=" << normalPriority[i]->threadPriority << endl;
+	}
+	cout << "lowPrio:" << endl;
+	for(int i=0; i<(int)lowPriority.size();i++)
+	{
+		cout << "tID=" << lowPriority[i]->threadID;
+		cout << " prio=" << lowPriority[i]->threadPriority << endl;
+	}
+	cout << "sleeping:" << endl;
+	for(int i=0; i<(int)sleeping.size();i++)
+	{
+		cout << "tID=" << sleeping[i]->threadID;
+		cout << " prio=" << sleeping[i]->threadPriority << endl;
+	}
+
+
+
 	SMachineContextRef old_context;
 	SMachineContextRef new_context;
 	// SCHEDULING
 	if(!highPriority.empty())
 	{
-		cout << "\thigh priority" << endl;
+		cout << "\t   Scheduling HighPrio Thread" << endl;
 		if( (highPriority.front()->threadPriority >= currentThread->threadPriority
 			&& currentThread->threadStackState != VM_THREAD_STATE_RUNNING) )
 		{
@@ -73,42 +120,57 @@ extern "C" void VMSchedule()
 				currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
 				VMPrioPush(currentThread);
 			}*/
+
+			TCB* old = currentThread;
+			currentThread = highPriority.front();
+			highPriority.erase(highPriority.begin());
+			currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
+			MachineContextSwitch( &(old->threadContext), &(currentThread->threadContext) );
+
+			/*
 			TCB* nextThread = highPriority.front();
 			highPriority.erase( highPriority.begin() );
 			nextThread->threadStackState = VM_THREAD_STATE_RUNNING;
 			old_context = &(currentThread->threadContext);
 			new_context = &(nextThread->threadContext);
 			currentThread = nextThread;
-			MachineContextSwitch(old_context, new_context);
+			MachineContextSwitch(old_context, new_context);*/
 		}
 		//check if high queue has same prio as current or if high queue
 		//		has higher prio than current
 	}
 	else if(!normalPriority.empty())
 	{
-		cout << "\tnormal priority" << endl;
+		cout << "\t   Scheduling NormalPrio Thread" << endl;
 		if( (normalPriority.front()->threadPriority >= currentThread->threadPriority
 			&& currentThread->threadStackState != VM_THREAD_STATE_RUNNING) )
 		{
-			if(currentThread->threadStackState == VM_THREAD_STATE_RUNNING)
+			/*if(currentThread->threadStackState == VM_THREAD_STATE_RUNNING)
 			{
 				currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
 				VMPrioPush(currentThread);
-			}
-			TCB* nextThread = normalPriority.front();
+			}*/
+
+			TCB* old = currentThread;
+			currentThread = normalPriority.front();
+			normalPriority.erase(normalPriority.begin());
+			currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
+			MachineContextSwitch( &(old->threadContext), &(currentThread->threadContext) );
+
+			/*TCB* nextThread = normalPriority.front();
 			normalPriority.erase( normalPriority.begin() );
 			nextThread->threadStackState = VM_THREAD_STATE_RUNNING;
 			old_context = &(currentThread->threadContext);
 			new_context = &(nextThread->threadContext);
 			currentThread = nextThread;
-			MachineContextSwitch(old_context, new_context);
+			MachineContextSwitch(old_context, new_context);*/
 		}
 		//check if normal queue has same prio as current or if normal queue
 		//		has higher prio than current
 	}
 	else if(!lowPriority.empty())
 	{
-		cout << "\tlow priority" << endl;
+		cout << "\t   Scheduling LowPrio Thread" << endl;
 		if( (lowPriority.front()->threadPriority >= currentThread->threadPriority
 			&& currentThread->threadStackState != VM_THREAD_STATE_RUNNING) )
 		{
@@ -117,26 +179,69 @@ extern "C" void VMSchedule()
 				currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
 				VMPrioPush(currentThread);
 			}*/
-			TCB* nextThread = lowPriority.front();
+			TCB* old = currentThread;
+			currentThread = lowPriority.front();
+			lowPriority.erase(lowPriority.begin());
+			currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
+			MachineContextSwitch( &(old->threadContext), &(currentThread->threadContext) );
+
+			/*TCB* nextThread = lowPriority.front();
 			lowPriority.erase( lowPriority.begin() );
 			nextThread->threadStackState = VM_THREAD_STATE_RUNNING;
 			old_context = &(currentThread->threadContext);
 			new_context = &(nextThread->threadContext);
-			currentThread = nextThread;
 			MachineContextSwitch(old_context, new_context);
+			currentThread = nextThread;*/
 		}
 		//check if low queue has same prio as current or if low queue
 		//		has higher prio than current
 	}
 	else if(currentThread->threadStackState != VM_THREAD_STATE_RUNNING)
 	{
-		cout << "\tidle thread" << endl;
+		cout << "\t   idle thread" << endl;
 		currentThread = allThreads[0];
 		old_context = &(currentThread->threadContext);
 		MachineContextSwitch( &(allThreads[currentThread->threadID]->threadContext), &(allThreads[0]->threadContext) );
-		cout << "\tend idle" << endl;
+		cout << "\t   end idle" << endl;
 	}
-	cout << "\tend Schedule" << endl;
+	cout << "currentThread: tid=" << currentThread->threadID;
+	cout << " prio=" << currentThread->threadPriority << endl;
+	cout << "allThreads:" << endl;
+	for(int i=0; i<(int)allThreads.size();i++)
+	{
+		cout << "tID=" << allThreads[i]->threadID;
+		cout << " prio=" << allThreads[i]->threadPriority << endl;
+	}
+	cout << "highPrio:" << endl;
+	for(int i=0; i<(int)highPriority.size();i++)
+	{
+		cout << "tID=" << highPriority[i]->threadID;
+		cout << " prio=" << highPriority[i]->threadPriority << endl;
+	}
+	cout << "normalPrio:" << endl;
+	for(int i=0; i<(int)normalPriority.size();i++)
+	{
+		cout << "tID=" << normalPriority[i]->threadID;
+		cout << " prio=" << normalPriority[i]->threadPriority << endl;
+	}
+	cout << "lowPrio:" << endl;
+	for(int i=0; i<(int)lowPriority.size();i++)
+	{
+		cout << "tID=" << lowPriority[i]->threadID;
+		cout << " prio=" << lowPriority[i]->threadPriority << endl;
+	}
+	cout << "sleeping:" << endl;
+	for(int i=0; i<(int)sleeping.size();i++)
+	{
+		cout << "tID=" << sleeping[i]->threadID;
+		cout << " prio=" << sleeping[i]->threadPriority << endl;
+	}
+
+
+
+
+
+	cout << "\t-End VMSchedule" << endl;
 
 } // end  VMSchedule --------------------------------------------------//
 
@@ -199,35 +304,35 @@ extern "C" TVMStatus VMStart(int tickms, int machinetickms, int argc,
 	MachineEnableSignals();
 
 	TCB* tIdle = new TCB;
-  tIdle->threadID = allThreads.size();
-  tIdle->threadStackState = VM_THREAD_STATE_READY;
-  tIdle->threadEntryFnct = VMIdle;
-  tIdle->threadEntryParam = NULL;
-  tIdle->threadPriority = VM_THREAD_PRIORITY_LOWEST;
-  tIdle->threadStackSize = 0x100000;
-  tIdle->threadBaseStackPtr = new uint8_t[0x100000];
-  allThreads.push_back(tIdle);
+	tIdle->threadID = allThreads.size();
+	tIdle->threadStackState = VM_THREAD_STATE_READY;
+	tIdle->threadEntryFnct = VMIdle;
+	tIdle->threadEntryParam = NULL;
+	tIdle->threadPriority = VM_THREAD_PRIORITY_LOWEST;
+	tIdle->threadStackSize = 0x100000;
+	tIdle->threadBaseStackPtr = new uint8_t[0x100000];
+	allThreads.push_back(tIdle);
 
 	TCB* mainThread = new TCB;
 	mainThread->threadStackState = VM_THREAD_STATE_RUNNING;
-  mainThread->threadPriority = VM_THREAD_PRIORITY_NORMAL;
-  mainThread->threadID = allThreads.size();
-  allThreads.push_back(mainThread);
-  currentThread = mainThread;
+	mainThread->threadPriority = VM_THREAD_PRIORITY_NORMAL;
+	mainThread->threadID = allThreads.size();
+	allThreads.push_back(mainThread);
+	currentThread = mainThread;
+	VMPrioPush(mainThread);
 
-  MachineContextCreate(&(tIdle->threadContext),
-  	VMIdle, NULL, tIdle->threadBaseStackPtr,
-  	tIdle->threadStackSize);
+	MachineContextCreate(&(tIdle->threadContext),
+		VMIdle, NULL, tIdle->threadBaseStackPtr,
+		tIdle->threadStackSize);
 
-  TVMMainEntry VMMain = VMLoadModule(argv[0]);
-  if (VMMain != NULL)
-  {
-    VMMain(argc, argv);
-    MachineTerminate();
-    return VM_STATUS_SUCCESS;
-  }
-  else
-		return VM_STATUS_FAILURE;
+	TVMMainEntry VMMain = VMLoadModule(argv[0]);
+	if (VMMain != NULL)
+	{
+		VMMain(argc, argv);
+		MachineTerminate();
+		return VM_STATUS_SUCCESS;
+	}
+	return VM_STATUS_FAILURE;
 
 } // end  VMFileClose ---------------------------------------------//
 
@@ -240,7 +345,7 @@ extern "C" TVMStatus VMThreadActivate(TVMThreadID thread)
 
 	//cout << (int)thread << endl;
 	//cout << allThreads.size() << endl;
-  // do some error checking for thread in size, non-null, and not dead
+	// do some error checking for thread in size, non-null, and not dead
 	MachineContextCreate( &(allThreads[thread]->threadContext),
     VMThreadSkeleton,
     allThreads[thread],
@@ -251,6 +356,7 @@ extern "C" TVMStatus VMThreadActivate(TVMThreadID thread)
 	allThreads[thread]->threadStackState = VM_THREAD_STATE_READY;
 
 	VMPrioPush(allThreads[thread]);
+	cout << "\tPUSHED the active thread" << endl;
 	VMSchedule();
 	MachineResumeSignals(&OldState);
 
@@ -262,6 +368,7 @@ extern "C" TVMStatus VMThreadActivate(TVMThreadID thread)
 extern "C" TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param,
 	TVMMemorySize memsize, TVMThreadPriority prio, TVMThreadIDRef tid)
 {
+	//cout << prio << (unsigned int)VM_THREAD_PRIORITY_LOW <<endl;
 	if (tid == NULL || entry == NULL)
     	return VM_STATUS_ERROR_INVALID_PARAMETER;
    	TMachineSignalState OldState;
@@ -271,33 +378,49 @@ extern "C" TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param,
 	newThread->threadID = allThreads.size();
 	newThread->threadStackState = VM_THREAD_STATE_DEAD;
 	newThread->threadEntryParam = param;
-	newThread->threadPriority = prio;
+	newThread->threadPriority = prio-1;
 	newThread->threadStackSize = memsize;
 	newThread->threadEntryFnct = entry;
 	newThread->threadBaseStackPtr = new uint8_t[memsize];
 	allThreads.push_back(newThread);
 	MachineResumeSignals(&OldState);
 
-	cout << "\tFINISHED CREATE THREAD - prio=" << (int)prio << " - id="<< *tid << endl;
+	cout << "\tFINISHED CREATE THREAD - prio=" << (int)prio-1 << " - id="<< *tid << endl;
 	return VM_STATUS_SUCCESS;
 } // end  VMFileClose ---------------------------------------------//
 
 
 extern "C" TVMStatus VMThreadSleep(TVMTick tick)
 {
+	cout << "\tStart VMThreadSleep" << endl;
 	TMachineSignalState OldState;
 	MachineSuspendSignals(&OldState);
 	if(tick == VM_TIMEOUT_IMMEDIATE)
 		VMSchedule();
 
-	cout << "\tin thread sleep" << endl;
+	if (currentThread->threadPriority == VM_THREAD_PRIORITY_LOW)
+	{
+		lowPriority.erase(lowPriority.begin());
+		cout << "\t   Erased a lowPrio thread" << endl;
+	}
+	if (currentThread->threadPriority == VM_THREAD_PRIORITY_NORMAL)
+	{
+		normalPriority.erase(normalPriority.begin());
+		cout << "\t   Erased a normalPrio thread" << endl;
+	}
+	if (currentThread->threadPriority == VM_THREAD_PRIORITY_HIGH)
+	{
+		highPriority.erase(highPriority.begin());
+		cout << "\t   Erased a highPrio thread" << endl;
+	}
+
 	currentThread->threadStackState = VM_THREAD_STATE_WAITING;
 	currentThread->threadWaitTicks = tick;
 	sleeping.push_back(currentThread);
-	//MachineEnableSignals();
+
 	VMSchedule();
 	MachineResumeSignals(&OldState);
-	cout << "\tend sleep" << endl;
+	cout << "\t-End VMThreadSleep" << endl;
 	return VM_STATUS_SUCCESS;
 
 } // end  VMThreadSleep -------------------------------------------//
