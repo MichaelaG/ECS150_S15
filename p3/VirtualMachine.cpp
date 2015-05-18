@@ -1,6 +1,7 @@
 #include "VirtualMachine.h"
 #include "Machine.h"
 #include "TCB.h"
+#include "MemoryPool.h"
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,6 +37,9 @@ vector<TCB*> allThreads;
 
 //SMachineContextRef old_context;
 //SMachineContextRef new_context;
+
+//vector<MemoryPool*> allMemPools;
+//MemoryPool* currentMemPool=NULL;
 
 TVMMainEntry VMLoadModule(const char *module);
 
@@ -313,6 +317,13 @@ extern "C" TVMStatus VMStart(int tickms, int machinetickms, int argc,
 	tIdle->threadBaseStackPtr = new uint8_t[0x100000];
 	allThreads.push_back(tIdle);
 
+	// initialize a memory pool
+	// basePtr = heapsize
+	// store the memory pool in the allMemPools vector
+
+	// create a shared memory pool
+	// store the shared memory pool in the allMemPools vector
+
 	TCB* mainThread = new TCB;
 	mainThread->threadStackState = VM_THREAD_STATE_RUNNING;
 	mainThread->threadPriority = VM_THREAD_PRIORITY_NORMAL;
@@ -502,6 +513,13 @@ extern "C" TVMStatus VMThreadTerminate(TVMThreadID thread)
 
 	extern "C" TVMStatus VMFileRead(int filedescriptor, void *data, int *length)
 	{
+		// allocate the location in shared memory you are to write to
+		// check the size, be consious of the 512 limit
+		// MachineFileRead(fildescriptors, ... )
+		// VMSchedule()
+		// use memcpy to copy the data into the shared location in memory
+		// deallocate the shared memory location
+
 	  return VM_STATUS_SUCCESS;
 	} // end FileRead ------------------------------------------------//
 
@@ -520,11 +538,65 @@ extern "C" TVMStatus VMThreadTerminate(TVMThreadID thread)
 		TMachineSignalState OldState;
     MachineSuspendSignals(&OldState);
 	  int len = *length;
+
+		// allocate the location in shared memory you are to write to
+		// check the size, be consious of the 512 limit
+		// use memcpy to copy the data into the shared location in memory
+		// MachineFileWrite(fildescriptors, ... )
+		// VMSchedule()
+		// deallocate the shared memory location
+
 	  write(filedescriptor, data, len);
 		MachineResumeSignals(&OldState);
 	  return VM_STATUS_SUCCESS;
 
 	} // end FileWrite -----------------------------------------------//
+
+//---------------------------------------------------------------------------//
+//-------------------------   MEMORY POOL STUFF   ---------------------------//
+//---------------------------------------------------------------------------//
+
+extern "C" void freeList(MemoryPool* memPool, memBlock* block)
+{
+	// insert the free memory blocks into the array of free space in the memory pool
+}
+
+extern "C" TVMStatus VMMemoryPoolCreate(void *base, TVMMemorySize size, TVMMemoryPoolIDRef memory)
+{
+	// memory should be the next available index in the vector, allMemPools.size()
+	// create the new memory pool
+	// add the new memory pool to the allMemPools vector
+}
+
+extern "C" TVMStatus VMMemoryPoolDelete(TVMMemoryPoolID memory)
+{
+	// delete the memory pool
+}
+
+TVMStatus VMMemoryPoolQuery(TVMMemoryPoolID memory, TVMMemorySizeRef bytesleft)
+{
+	// queries the available memory in the memory pool
+	// bytesleft should equal the amount of free space in the memory pool
+}
+
+TVMStatus VMMemoryPoolAllocate(TVMMemoryPoolID memory, TVMMemorySize size, void **pointer)
+{
+	// allocates memory to the memory pool
+
+	// create a new memory block and checks to see if the memory pool indexed has free space
+	// big enough for the block
+	// if there are no free blocks big enough, then allocate some memory
+	// set all the appropriate values to the new block and insert it into the appropriate vector
+	// then deallocate the memory pool
+}
+
+TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
+{
+	// deallocates memory to the memory pool
+
+	// find the memory pool in question and deallocate it
+	// erase it from the vectors and add it to the available space vectors
+}
 
 //---------------------------------------------------------------------------//
 //--------------------------------   END   ----------------------------------//
