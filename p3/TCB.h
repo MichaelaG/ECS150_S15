@@ -22,8 +22,8 @@ extern "C"
 
      TCB::TCB()
      {
-          threadID =  0;
-          threadPriority = 0;
+          //threadID =  0;
+          //threadPriority = 0;
           threadStackState = 0;
           threadWaitTicks = 0;
      }

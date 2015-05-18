@@ -1,3 +1,4 @@
+
 #ifndef VIRTUALMACHINE_H
 #define VIRTUALMACHINE_H
 

@@ -14,7 +14,7 @@ void VMMain(int argc, char *argv[]){
     TVMThreadID VMThreadID;
     TVMThreadState VMState;
     VMPrint("VMMain creating thread.\n");
-    VMThreadCreate(VMThread, NULL, 0x100000, VM_THREAD_PRIORITY_LOW, &VMThreadID);
+    VMThreadCreate(VMThread, NULL, 0x100000, VM_THREAD_PRIORITY_HIGH, &VMThreadID);
     VMPrint("VMMain getting thread state: ");
     VMThreadState(VMThreadID, &VMState);
     switch(VMState){
