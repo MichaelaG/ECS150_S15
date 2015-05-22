@@ -21,16 +21,14 @@
 using namespace std;
 
 //TVMTick threadTick;
-TCB* currentThread=NULL;
+//TCB* currentThread=NULL;
+int currentThread=-1;
 
 vector<TCB*> highPriority;
 vector<TCB*> normalPriority;
 vector<TCB*> lowPriority;
 
 vector<TCB*> ready;
-//vector<TCB*> waiting;
-//vector<TCB*> running;
-//vector<TCB*> dead;
 vector<TCB*> sleeping;
 vector<TCB*> allThreads;
 
@@ -71,169 +69,160 @@ extern "C" void VMSchedule()
 {
 	cout << "\tStart VMShedule" << endl;
 
-	cout << "currentThread: tid=" << currentThread->threadID;
-	cout << " prio=" << currentThread->threadPriority << endl;
-	cout << "allThreads:" << endl;
+
+
+	cout << "\tBEFORE SCHEDULING" << endl;
+	cout << "\t\tcurrentThread:\n\t\t tid=" << allThreads[currentThread]->threadID;
+	cout << " prio=" << allThreads[currentThread]->threadPriority << endl;
+	cout << "\t\tallThreads:" << endl;
 	for(int i=0; i<(int)allThreads.size();i++)
 	{
-		cout << "tID=" << allThreads[i]->threadID;
+		cout << "\t\t tID=" << allThreads[i]->threadID;
 		cout << " prio=" << allThreads[i]->threadPriority << endl;
 	}
-	cout << "highPrio:" << endl;
+	cout << "\t\thighPrio:" << endl;
 	for(int i=0; i<(int)highPriority.size();i++)
 	{
-		cout << "tID=" << highPriority[i]->threadID;
+		cout << "\t\t tID=" << highPriority[i]->threadID;
 		cout << " prio=" << highPriority[i]->threadPriority << endl;
 	}
-	cout << "normalPrio:" << endl;
+	cout << "\t\tnormalPrio:" << endl;
 	for(int i=0; i<(int)normalPriority.size();i++)
 	{
-		cout << "tID=" << normalPriority[i]->threadID;
+		cout << "\t\t tID=" << normalPriority[i]->threadID;
 		cout << " prio=" << normalPriority[i]->threadPriority << endl;
 	}
-	cout << "lowPrio:" << endl;
+	cout << "\t\tlowPrio:" << endl;
 	for(int i=0; i<(int)lowPriority.size();i++)
 	{
-		cout << "tID=" << lowPriority[i]->threadID;
+		cout << "\t\t tID=" << lowPriority[i]->threadID;
 		cout << " prio=" << lowPriority[i]->threadPriority << endl;
 	}
-	cout << "sleeping:" << endl;
+	cout << "\t\tsleeping:" << endl;
 	for(int i=0; i<(int)sleeping.size();i++)
 	{
-		cout << "tID=" << sleeping[i]->threadID;
+		cout << "\t\t tID=" << sleeping[i]->threadID;
 		cout << " prio=" << sleeping[i]->threadPriority << endl;
 	}
 
 
 
-	SMachineContextRef old_context;
-	SMachineContextRef new_context;
+
+	//SMachineContextRef old_context;
+	//SMachineContextRef new_context;
 	// SCHEDULING
 	if(!highPriority.empty())
 	{
-		cout << "\t   Scheduling HighPrio Thread" << endl;
-		if( (highPriority.front()->threadPriority >= currentThread->threadPriority
-			&& currentThread->threadStackState != VM_THREAD_STATE_RUNNING) )
+		if( (highPriority.front()->threadPriority == allThreads[currentThread]->threadPriority
+        && allThreads[currentThread]->threadStackState != VM_THREAD_STATE_RUNNING)
+		|| highPriority.front()->threadPriority > allThreads[currentThread]->threadPriority)
 		{
-			/*if(currentThread->threadStackState == VM_THREAD_STATE_RUNNING)
-			{
-				currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
-				VMPrioPush(currentThread);
-			}*/
-
-			TCB* old = currentThread;
-			currentThread = highPriority.front();
-			highPriority.erase(highPriority.begin());
-			currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
-			MachineContextSwitch( &(old->threadContext), &(currentThread->threadContext) );
-
-			/*
+			cout << "\t   Scheduling HighPrio Thread" << endl;
 			TCB* nextThread = highPriority.front();
-			highPriority.erase( highPriority.begin() );
-			nextThread->threadStackState = VM_THREAD_STATE_RUNNING;
-			old_context = &(currentThread->threadContext);
-			new_context = &(nextThread->threadContext);
-			currentThread = nextThread;
-			MachineContextSwitch(old_context, new_context);*/
+			TCB* currentThreadRef = allThreads[currentThread];
+			if(nextThread->threadID != allThreads[currentThread]->threadID)
+			{
+	            highPriority.erase(highPriority.begin());
+	            nextThread->threadStackState = VM_THREAD_STATE_RUNNING;
+	            //old_context = &(allThreads[currentThread]->threadContext);
+	            //new_context = &(nextThread->threadContext);
+	            currentThread = nextThread->threadID;
+				MachineContextSwitch( &(currentThreadRef->threadContext),&(nextThread->threadContext) );
+			}
 		}
-		//check if high queue has same prio as current or if high queue
-		//		has higher prio than current
 	}
 	else if(!normalPriority.empty())
 	{
-		cout << "\t   Scheduling NormalPrio Thread" << endl;
-		if( (normalPriority.front()->threadPriority >= currentThread->threadPriority
-			&& currentThread->threadStackState != VM_THREAD_STATE_RUNNING) )
+		if((normalPriority.front()->threadPriority == allThreads[currentThread]->threadPriority
+		&& allThreads[currentThread]->threadStackState != VM_THREAD_STATE_RUNNING)
+		|| allThreads[currentThread]->threadStackState != VM_THREAD_STATE_RUNNING
+		|| normalPriority.front()->threadPriority > allThreads[currentThread]->threadPriority)
 		{
-			/*if(currentThread->threadStackState == VM_THREAD_STATE_RUNNING)
+			cout << "\t   Scheduling NormalPrio Thread" << endl;
+			TCB* nextThread = normalPriority.front();
+			TCB* currentThreadRef = allThreads[currentThread];
+			cout << "\t  "<< nextThread->threadID << " " << allThreads[currentThread]->threadID << endl;
+			if(nextThread->threadID != allThreads[currentThread]->threadID)
 			{
-				currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
-				VMPrioPush(currentThread);
-			}*/
-
-			TCB* old = currentThread;
-			currentThread = normalPriority.front();
-			normalPriority.erase(normalPriority.begin());
-			currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
-			MachineContextSwitch( &(old->threadContext), &(currentThread->threadContext) );
-
-			/*TCB* nextThread = normalPriority.front();
-			normalPriority.erase( normalPriority.begin() );
-			nextThread->threadStackState = VM_THREAD_STATE_RUNNING;
-			old_context = &(currentThread->threadContext);
-			new_context = &(nextThread->threadContext);
-			currentThread = nextThread;
-			MachineContextSwitch(old_context, new_context);*/
+				cout << "\tNORMAL PRIO ERASE" << endl;
+	            normalPriority.erase(normalPriority.begin());
+	            nextThread->threadStackState = VM_THREAD_STATE_RUNNING;
+	            //old_context = &(allThreads[currentThread]->threadContext);
+	            //new_context = &(nextThread->threadContext);
+	            currentThread = nextThread->threadID;
+				MachineContextSwitch( &(currentThreadRef->threadContext),&(nextThread->threadContext) );
+			}
 		}
-		//check if normal queue has same prio as current or if normal queue
-		//		has higher prio than current
 	}
 	else if(!lowPriority.empty())
 	{
-		cout << "\t   Scheduling LowPrio Thread" << endl;
-		if( (lowPriority.front()->threadPriority >= currentThread->threadPriority
-			&& currentThread->threadStackState != VM_THREAD_STATE_RUNNING) )
+		if((lowPriority.front()->threadPriority == allThreads[currentThread]->threadPriority
+        && allThreads[currentThread]->threadStackState != VM_THREAD_STATE_RUNNING)
+        || allThreads[currentThread]->threadStackState != VM_THREAD_STATE_RUNNING
+		|| lowPriority.front()->threadPriority > allThreads[currentThread]->threadPriority)
 		{
-			/*if(currentThread->threadStackState == VM_THREAD_STATE_RUNNING)
+			cout << "\t   Scheduling LowPrio Thread" << endl;
+			TCB* nextThread = lowPriority.front();
+			TCB* currentThreadRef = allThreads[currentThread];
+			cout << "\t  "<< nextThread->threadID << " " << allThreads[currentThread]->threadID << endl;
+			if(nextThread->threadID != allThreads[currentThread]->threadID)
 			{
-				currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
-				VMPrioPush(currentThread);
-			}*/
-			TCB* old = currentThread;
-			currentThread = lowPriority.front();
-			lowPriority.erase(lowPriority.begin());
-			currentThread->threadStackState = VM_THREAD_STATE_RUNNING;
-			MachineContextSwitch( &(old->threadContext), &(currentThread->threadContext) );
-
-			/*TCB* nextThread = lowPriority.front();
-			lowPriority.erase( lowPriority.begin() );
-			nextThread->threadStackState = VM_THREAD_STATE_RUNNING;
-			old_context = &(currentThread->threadContext);
-			new_context = &(nextThread->threadContext);
-			MachineContextSwitch(old_context, new_context);
-			currentThread = nextThread;*/
+				cout << "\tLOW PRIO ERASE" << endl;
+	            lowPriority.erase(lowPriority.begin());
+	            nextThread->threadStackState = VM_THREAD_STATE_RUNNING;
+	            //old_context = &(allThreads[currentThread]->threadContext);
+	            //new_context = &(nextThread->threadContext);
+	            currentThread = nextThread->threadID;
+	            cout << "\t   " << &(currentThreadRef->threadContext) << " " << &(nextThread->threadContext) << endl;
+				MachineContextSwitch( &(currentThreadRef->threadContext),&(nextThread->threadContext) );
+			}
 		}
-		//check if low queue has same prio as current or if low queue
-		//		has higher prio than current
 	}
-	else if(currentThread->threadStackState != VM_THREAD_STATE_RUNNING)
+	else if(allThreads[currentThread]->threadStackState != VM_THREAD_STATE_RUNNING)
 	{
 		cout << "\t   idle thread" << endl;
-		currentThread = allThreads[0];
-		old_context = &(currentThread->threadContext);
-		MachineContextSwitch( &(allThreads[currentThread->threadID]->threadContext), &(allThreads[0]->threadContext) );
+		//old_context = &(currentThread->threadContext);
+		TCB* currentThreadRef = allThreads[currentThread];
+		currentThread=0;
+		MachineContextSwitch( &(currentThreadRef->threadContext), &(allThreads[0]->threadContext) );
 		cout << "\t   end idle" << endl;
 	}
-	cout << "currentThread: tid=" << currentThread->threadID;
-	cout << " prio=" << currentThread->threadPriority << endl;
-	cout << "allThreads:" << endl;
+
+
+
+
+
+	cout << "\tAFTER SCHEDULING" << endl;
+	cout << "\t\tcurrentThread:\n\t\t tid=" << allThreads[currentThread]->threadID;
+	cout << " prio=" << allThreads[currentThread]->threadPriority << endl;
+	cout << "\t\tallThreads:" << endl;
 	for(int i=0; i<(int)allThreads.size();i++)
 	{
-		cout << "tID=" << allThreads[i]->threadID;
+		cout << "\t\t tID=" << allThreads[i]->threadID;
 		cout << " prio=" << allThreads[i]->threadPriority << endl;
 	}
-	cout << "highPrio:" << endl;
+	cout << "\t\thighPrio:" << endl;
 	for(int i=0; i<(int)highPriority.size();i++)
 	{
-		cout << "tID=" << highPriority[i]->threadID;
+		cout << "\t\t tID=" << highPriority[i]->threadID;
 		cout << " prio=" << highPriority[i]->threadPriority << endl;
 	}
-	cout << "normalPrio:" << endl;
+	cout << "\t\tnormalPrio:" << endl;
 	for(int i=0; i<(int)normalPriority.size();i++)
 	{
-		cout << "tID=" << normalPriority[i]->threadID;
+		cout << "\t\t tID=" << normalPriority[i]->threadID;
 		cout << " prio=" << normalPriority[i]->threadPriority << endl;
 	}
-	cout << "lowPrio:" << endl;
+	cout << "\t\tlowPrio:" << endl;
 	for(int i=0; i<(int)lowPriority.size();i++)
 	{
-		cout << "tID=" << lowPriority[i]->threadID;
+		cout << "\t\t tID=" << lowPriority[i]->threadID;
 		cout << " prio=" << lowPriority[i]->threadPriority << endl;
 	}
-	cout << "sleeping:" << endl;
+	cout << "\t\tsleeping:" << endl;
 	for(int i=0; i<(int)sleeping.size();i++)
 	{
-		cout << "tID=" << sleeping[i]->threadID;
+		cout << "\t\t tID=" << sleeping[i]->threadID;
 		cout << " prio=" << sleeping[i]->threadPriority << endl;
 	}
 
@@ -263,6 +252,7 @@ extern "C" void AlarmCallback(void *param)
 				VMPrioPush(sleeping[i]);
 				cout << "\terase and schedule" << endl;
 				sleeping.erase(sleeping.begin() + i);
+				MachineResumeSignals(&OldState);
 				VMSchedule();
 			}
 			cout << "\tdecrement wait ticks" << endl;
@@ -281,6 +271,7 @@ extern "C" void AlarmCallback(void *param)
 
 extern "C" void VMIdle(void*) //done
 {
+	MachineEnableSignals();
 	while(1)
 	{/*do nothing;*/}
 
@@ -318,7 +309,7 @@ extern "C" TVMStatus VMStart(int tickms, int machinetickms, int argc,
 	mainThread->threadPriority = VM_THREAD_PRIORITY_NORMAL;
 	mainThread->threadID = allThreads.size();
 	allThreads.push_back(mainThread);
-	currentThread = mainThread;
+	currentThread = mainThread->threadID;
 	VMPrioPush(mainThread);
 
 	MachineContextCreate(&(tIdle->threadContext),
@@ -357,8 +348,8 @@ extern "C" TVMStatus VMThreadActivate(TVMThreadID thread)
 
 	VMPrioPush(allThreads[thread]);
 	cout << "\tPUSHED the active thread" << endl;
-	VMSchedule();
 	MachineResumeSignals(&OldState);
+	VMSchedule();
 
 	return VM_STATUS_SUCCESS;
 } // end  VMThreadActivate ---------------------------------------------//
@@ -394,32 +385,40 @@ extern "C" TVMStatus VMThreadSleep(TVMTick tick)
 {
 	cout << "\tStart VMThreadSleep" << endl;
 	TMachineSignalState OldState;
-	MachineSuspendSignals(&OldState);
+	//MachineSuspendSignals(&OldState);
 	if(tick == VM_TIMEOUT_IMMEDIATE)
-		VMSchedule();
-
-	if (currentThread->threadPriority == VM_THREAD_PRIORITY_LOW)
+	{
+		VMPrioPush(allThreads[currentThread]);
+		//later make it so that it searches through and find the right
+		//thread to erase from the sleeping vector
+		sleeping.erase(sleeping.begin());
+		cout << "\t   Erased a sleeping thread" << endl;
+		MachineResumeSignals(&OldState);
+		//VMSchedule();
+	}
+	if (allThreads[currentThread]->threadPriority == VM_THREAD_PRIORITY_LOW)
 	{
 		lowPriority.erase(lowPriority.begin());
 		cout << "\t   Erased a lowPrio thread" << endl;
 	}
-	if (currentThread->threadPriority == VM_THREAD_PRIORITY_NORMAL)
+	if (allThreads[currentThread]->threadPriority == VM_THREAD_PRIORITY_NORMAL)
 	{
 		normalPriority.erase(normalPriority.begin());
 		cout << "\t   Erased a normalPrio thread" << endl;
 	}
-	if (currentThread->threadPriority == VM_THREAD_PRIORITY_HIGH)
+	if (allThreads[currentThread]->threadPriority == VM_THREAD_PRIORITY_HIGH)
 	{
 		highPriority.erase(highPriority.begin());
 		cout << "\t   Erased a highPrio thread" << endl;
 	}
 
-	currentThread->threadStackState = VM_THREAD_STATE_WAITING;
-	currentThread->threadWaitTicks = tick;
-	sleeping.push_back(currentThread);
+	allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+	allThreads[currentThread]->threadWaitTicks = tick;
+	sleeping.push_back(allThreads[currentThread]);
 
 	VMSchedule();
 	MachineResumeSignals(&OldState);
+	
 	cout << "\t-End VMThreadSleep" << endl;
 	return VM_STATUS_SUCCESS;
 
@@ -464,7 +463,7 @@ extern "C" TVMStatus VMThreadTerminate(TVMThreadID thread)
 
   allThreads[thread]->threadStackState = VM_THREAD_STATE_DEAD;
 	MachineResumeSignals(&OldState);
-	if (currentThread->threadID == thread)
+	if (currentThread == (int)thread)
 	{
 		VMSchedule();
 	}
@@ -481,9 +480,14 @@ extern "C" TVMStatus VMThreadTerminate(TVMThreadID thread)
 
 	extern "C" TVMStatus VMFileClose(int filedescriptor)
 	{
-	  if (close(filedescriptor))
-	  	return VM_STATUS_SUCCESS;
-	  else return VM_STATUS_FAILURE;
+		TMachineSignalState OldState;
+		MachineSuspendSignals(&OldState);
+
+		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+		//MachineFileClose(filedescriptor, fileCallBack, (void*)allThreads[currentThread]);
+
+		MachineResumeSignals(&OldState);
+		return VM_STATUS_SUCCESS;
 
 	} // end FileClose -----------------------------------------------//
 
@@ -493,6 +497,7 @@ extern "C" TVMStatus VMThreadTerminate(TVMThreadID thread)
 	{
 	  if (filename == NULL || filedescriptor == NULL)
 	  	return VM_STATUS_ERROR_INVALID_PARAMETER;
+	  allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
 	  *filedescriptor = open(filename, flags, mode);
 
 	  return VM_STATUS_SUCCESS;
@@ -502,14 +507,34 @@ extern "C" TVMStatus VMThreadTerminate(TVMThreadID thread)
 
 	extern "C" TVMStatus VMFileRead(int filedescriptor, void *data, int *length)
 	{
-	  return VM_STATUS_SUCCESS;
+		if(data == NULL || length == NULL)
+			return VM_STATUS_ERROR_INVALID_PARAMETER;
+
+		TMachineSignalState OldState;
+		MachineSuspendSignals(&OldState);
+		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+
+		// do read
+
+		// schedule
+
+		MachineResumeSignals(&OldState);
+	  	return VM_STATUS_SUCCESS;
 	} // end FileRead ------------------------------------------------//
 
 
 	extern "C" TVMStatus VMFileSeek(int filedescriptor, int offset, int whence,
 		int *newoffset)
 	{
-	  //fseek(*filedescriptor, offset, whence);
+	  TMachineSignalState OldState;
+		MachineSuspendSignals(&OldState);
+		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+
+		// do seek
+
+		// schedule
+
+		MachineResumeSignals(&OldState);
 	  return VM_STATUS_SUCCESS;
 
 	} // end FileSeek ------------------------------------------------//
@@ -518,12 +543,13 @@ extern "C" TVMStatus VMThreadTerminate(TVMThreadID thread)
 	extern "C" TVMStatus VMFileWrite(int filedescriptor, void *data, int *length)
 	{
 		TMachineSignalState OldState;
-    MachineSuspendSignals(&OldState);
-	  int len = *length;
-	  write(filedescriptor, data, len);
+		MachineSuspendSignals(&OldState);
+		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+	  	int len = *length;
+	  	write(filedescriptor, data, len);
 		MachineResumeSignals(&OldState);
-	  return VM_STATUS_SUCCESS;
 
+	  	return VM_STATUS_SUCCESS;
 	} // end FileWrite -----------------------------------------------//
 
 //---------------------------------------------------------------------------//
