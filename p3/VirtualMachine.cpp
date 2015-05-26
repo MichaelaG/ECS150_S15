@@ -108,7 +108,7 @@ extern "C" void VMSchedule()
 	cout << "\tStart VMShedule" << endl;
 	cout << "\t  <--BEFORE" << endl;
 	printStuff();
-	
+
 	if(!highPriority.empty())
 	{
 		TCB* currentThreadRef = allThreads[currentThread];
@@ -133,8 +133,8 @@ extern "C" void VMSchedule()
         	sleeping.push_back(currentThreadRef);
         }*/
     	// set current to next and remove from Q
-    	TCB* temp = normalPriority.front();
-    	currentThread = temp->threadID;
+    	//TCB* temp = normalPriority.front();
+    	currentThread = normalPriority.front()->threadID;
     	normalPriority.erase(normalPriority.begin());
     	// set current to running
     	allThreads[currentThread]->threadStackState = VM_THREAD_STATE_RUNNING;
@@ -144,15 +144,20 @@ extern "C" void VMSchedule()
 
 	else if(!lowPriority.empty())
 	{
-		TCB* currentThreadRef = allThreads[currentThread];
+		//TCB* currentThreadRef = allThreads[currentThread];
 		cout << "\t  lowPriority is not empty" << endl;
 		// if current thread is running then set it to ready and
 		//    put it into vectors
-		if (currentThreadRef->threadStackState == VM_THREAD_STATE_RUNNING)
+		if (allThreads[currentThread]->threadStackState == VM_THREAD_STATE_RUNNING)
 		{
-        	currentThreadRef->threadStackState = VM_THREAD_STATE_READY;
-        	VMPrioPush(currentThreadRef);
-    	}
+        	cout << "in if" << endl;
+					allThreads[currentThread]->threadStackState = VM_THREAD_STATE_READY;
+		}
+    if (allThreads[currentThread]->threadStackState == VM_THREAD_STATE_READY)
+		{
+					VMPrioPush(allThreads[currentThread]);
+					cout << "end if" << endl;
+    }
     	// if current thread is waiting and ticks are done
     	/*else if ( currentThreadRef->threadStackState==VM_THREAD_STATE_WAITING
     		&& currentThreadRef->threadWaitTicks != 0 )
@@ -160,11 +165,17 @@ extern "C" void VMSchedule()
         	sleeping.push_back(currentThreadRef);
         }*/
     	// set current to next and remove from Q
-    	TCB* temp = lowPriority.front();
-    	currentThread = temp->threadID;
+			TCB* currentThreadRef = allThreads[currentThread];
+			cout << "past if" << endl;
+    	currentThread = lowPriority.front()->threadID;
+			cout << "set temp" << endl;
+    	//currentThread = temp->threadID;
+			cout << "new current thread id" << endl;
     	lowPriority.erase(lowPriority.begin());
+			cout << "erase id from the vector" << endl;
     	// set current to running
     	allThreads[currentThread]->threadStackState = VM_THREAD_STATE_RUNNING;
+			cout << "set stack state to running" << endl;
     	MachineContextSwitch(&(currentThreadRef->threadContext), &(allThreads[currentThread]->threadContext));
     	cout << "\t  finished MCC low" << endl;
 	}// finish lowprio scheduling
@@ -172,6 +183,8 @@ extern "C" void VMSchedule()
 	else
 	{
 		cout << "\t  nothing to schedule, scheduling Idle" << endl;
+		MachineContextSwitch(&(allThreads[currentThread]->threadContext), &(allThreads[0]->threadContext));
+
 	}// finish idle scheduling
 
 	cout << "\t  -->AFTER" <<  endl;
@@ -184,34 +197,33 @@ extern "C" void VMSchedule()
 
 extern "C" void AlarmCallback(void *param)
 {
-	TMachineSignalState OldState;
-	MachineSuspendSignals(&OldState);
-	cout << "\tenter alarm" << endl;
-	cout << sleeping.empty() << endl;
+	//TMachineSignalState OldState;
+	//MachineSuspendSignals(&OldState);
+	//cout << "\tenter alarm" << endl;
+	//cout << sleeping.empty() << endl;
 	if (!sleeping.empty()) {
 		cout << "\tnot empty" << endl;
 		for (int i = 0; i < (int)sleeping.size(); i++)
 		{
-			cout << "\tless than sleeping size" << endl;
+			cout << sleeping[i]->threadWaitTicks << endl;
+			sleeping[i]->threadWaitTicks = sleeping[i]->threadWaitTicks - 1;
+			//cout << "\tless than sleeping size" << endl;
 			if (sleeping[i]->threadWaitTicks == 0)
 			{
-				cout << "\tfound tick==0" << endl;
+				cout << "\tfound tick==0 at " << i << endl;
 				sleeping[i]->threadStackState = VM_THREAD_STATE_READY;
 				VMPrioPush(sleeping[i]);
-				cout << "\terase and schedule" << endl;
+				//cout << "\terase and schedule" << endl;
 				sleeping.erase(sleeping.begin() + i);
-				MachineResumeSignals(&OldState);
+				//MachineResumeSignals(&OldState);
 				VMSchedule();
 			}
 			cout << "\tdecrement wait ticks" << endl;
-			sleeping[i]->threadWaitTicks = sleeping[i]->threadWaitTicks - 1;
 			//cout << i << ": " << sleeping[i]->threadWaitTicks << endl;
 			}
 		}
 
-	else
-		return;
-	MachineResumeSignals(&OldState);
+	//MachineResumeSignals(&OldState);
 	cout << "\tend alarm" << endl;
 
 }// end  AlarmCallback --------------------------------------------//
@@ -228,8 +240,10 @@ extern "C" void VMIdle(void*) //done
 
 extern "C" void VMThreadSkeleton(void *param)
 {
+	MachineEnableSignals();
   TCB* entryPoint = ( (TCB*)param );
-  entryPoint->threadEntryParam = ( ((TCB*)param)->threadEntryParam );
+  //entryPoint->threadEntryParam = ( ((TCB*)param)->threadEntryParam );
+	entryPoint->threadEntryFnct(entryPoint->threadEntryParam);
   VMThreadTerminate( entryPoint->threadID );
 
 } // end  VMThreadSkeleton ----------------------------------------//
@@ -310,21 +324,22 @@ extern "C" TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param,
 	//cout << prio << (unsigned int)VM_THREAD_PRIORITY_LOW <<endl;
 	if (tid == NULL || entry == NULL)
     	return VM_STATUS_ERROR_INVALID_PARAMETER;
-   	TMachineSignalState OldState;
+  TMachineSignalState OldState;
 	MachineSuspendSignals(&OldState);
 	TCB* newThread = new TCB;
 	*tid =  allThreads.size();
-	newThread->threadID = allThreads.size();
+	newThread->threadID = *tid;
 	newThread->threadStackState = VM_THREAD_STATE_DEAD;
 	newThread->threadEntryParam = param;
-	newThread->threadPriority = prio-1;
+	newThread->threadPriority = prio;
 	newThread->threadStackSize = memsize;
 	newThread->threadEntryFnct = entry;
+	newThread->threadWaitTicks = 0;
 	newThread->threadBaseStackPtr = new uint8_t[memsize];
 	allThreads.push_back(newThread);
 	MachineResumeSignals(&OldState);
 
-	cout << "\tFINISHED CREATE THREAD - prio=" << (int)prio-1;
+	cout << "\tFINISHED CREATE THREAD - prio=" << (int)prio;
 	cout << " - id="<< *tid << endl;
 	return VM_STATUS_SUCCESS;
 } // end  VMFileClose ---------------------------------------------//
@@ -337,12 +352,13 @@ extern "C" TVMStatus VMThreadSleep(TVMTick tick)
 	//MachineSuspendSignals(&OldState);
 	if(tick == VM_TIMEOUT_IMMEDIATE)
 	{
-		VMPrioPush(allThreads[currentThread]);
+		//VMPrioPush(allThreads[currentThread]);
 		//later make it so that it searches through and find the right
 		//thread to erase from the sleeping vector
-		sleeping.erase(sleeping.begin());
-		cout << "\t   Erased a sleeping thread" << endl;
+		//sleeping.erase(sleeping.begin());
+		//cout << "\t   Erased a sleeping thread" << endl;
 		MachineResumeSignals(&OldState);
+		return VM_STATUS_ERROR_INVALID_PARAMETER;
 		//VMSchedule();
 	}
 	cout << "\t  Finished Timeout Immediate" << endl;
@@ -372,7 +388,7 @@ extern "C" TVMStatus VMThreadSleep(TVMTick tick)
 
 	VMSchedule();
 	MachineResumeSignals(&OldState);
-	
+
 	cout << "\t-End VMThreadSleep" << endl;
 	return VM_STATUS_SUCCESS;
 
@@ -412,16 +428,47 @@ extern "C" TVMStatus VMThreadTerminate(TVMThreadID thread)
 	TMachineSignalState OldState;
 	MachineSuspendSignals(&OldState);
 
-	// error checking first - check whehter threadid is valid
+	// error checking first - check whether threadID is valid
 	//		and not already dead
 
   allThreads[thread]->threadStackState = VM_THREAD_STATE_DEAD;
-	MachineResumeSignals(&OldState);
-	if (currentThread == (int)thread)
-	{
-		VMSchedule();
-	}
 
+	if (allThreads[thread]->threadPriority == VM_THREAD_PRIORITY_HIGH)
+	{
+		for (int i = 0; i < (int)highPriority.size(); i++)
+		{
+			if (i == (int)thread)
+			{
+				highPriority.erase(highPriority.begin() + i);
+			}
+		}
+	}
+	else if (allThreads[thread]->threadPriority == VM_THREAD_PRIORITY_NORMAL)
+	{
+		for (int i = 0; i < (int)normalPriority.size(); i++)
+		{
+			if (i == (int)thread)
+			{
+				normalPriority.erase(normalPriority.begin() + i);
+			}
+		}
+	}
+	else if (allThreads[thread]->threadPriority == VM_THREAD_PRIORITY_LOW)
+	{
+		for (int i = 0; i < (int)lowPriority.size(); i++)
+		{
+			if (i == (int)thread)
+			{
+				lowPriority.erase(lowPriority.begin() + i);
+			}
+		}
+	}
+	//MachineResumeSignals(&OldState);
+	//if (currentThread == (int)thread)
+	//{
+		VMSchedule();
+	//}
+	MachineResumeSignals(&OldState);
   return VM_STATUS_SUCCESS;
 
 } // end  VMThreadState -------------------------------------------//

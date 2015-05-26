@@ -13,7 +13,7 @@ extern "C"
           TVMThreadPriority   threadPriority;
           TVMThreadState      threadStackState;
           TVMMemorySize       threadStackSize;
-          uint8_t *           threadBaseStackPtr;
+          void *              threadBaseStackPtr;
           TVMThreadEntry      threadEntryFnct;
           void *              threadEntryParam;
           SMachineContext     threadContext;
