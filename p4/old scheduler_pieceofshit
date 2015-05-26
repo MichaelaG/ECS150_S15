@@ -1,0 +1,82 @@
+// old scheduler
+
+
+	//SMachineContextRef old_context;
+	//SMachineContextRef new_context;
+	// SCHEDULING
+	if(!highPriority.empty())
+	{
+		if( (highPriority.front()->threadPriority == allThreads[currentThread]->threadPriority
+        && allThreads[currentThread]->threadStackState != VM_THREAD_STATE_RUNNING)
+		|| highPriority.front()->threadPriority > allThreads[currentThread]->threadPriority)
+		{
+			cout << "\t   Scheduling HighPrio Thread" << endl;
+			TCB* nextThread = highPriority.front();
+			TCB* currentThreadRef = allThreads[currentThread];
+			if(nextThread->threadID != allThreads[currentThread]->threadID)
+			{
+	            highPriority.erase(highPriority.begin());
+	            nextThread->threadStackState = VM_THREAD_STATE_RUNNING;
+	            //old_context = &(allThreads[currentThread]->threadContext);
+	            //new_context = &(nextThread->threadContext);
+	            currentThread = nextThread->threadID;
+				MachineContextSwitch( &(currentThreadRef->threadContext),&(nextThread->threadContext) );
+			}
+		}
+	}
+	else if(!normalPriority.empty())
+	{
+		if((normalPriority.front()->threadPriority == allThreads[currentThread]->threadPriority
+		&& allThreads[currentThread]->threadStackState != VM_THREAD_STATE_RUNNING)
+		|| allThreads[currentThread]->threadStackState != VM_THREAD_STATE_RUNNING
+		|| normalPriority.front()->threadPriority > allThreads[currentThread]->threadPriority)
+		{
+			cout << "\t   Scheduling NormalPrio Thread" << endl;
+			TCB* nextThread = normalPriority.front();
+			TCB* currentThreadRef = allThreads[currentThread];
+			cout << "\t  "<< nextThread->threadID << " " << allThreads[currentThread]->threadID << endl;
+			if(nextThread->threadID != allThreads[currentThread]->threadID)
+			{
+				cout << "\tNORMAL PRIO ERASE" << endl;
+	            normalPriority.erase(normalPriority.begin());
+	            nextThread->threadStackState = VM_THREAD_STATE_RUNNING;
+	            //old_context = &(allThreads[currentThread]->threadContext);
+	            //new_context = &(nextThread->threadContext);
+	            currentThread = nextThread->threadID;
+				MachineContextSwitch( &(currentThreadRef->threadContext),&(nextThread->threadContext) );
+			}
+		}
+	}
+	else if(!lowPriority.empty())
+	{
+		if((lowPriority.front()->threadPriority == allThreads[currentThread]->threadPriority
+        && allThreads[currentThread]->threadStackState != VM_THREAD_STATE_RUNNING)
+        || allThreads[currentThread]->threadStackState != VM_THREAD_STATE_RUNNING
+		|| lowPriority.front()->threadPriority > allThreads[currentThread]->threadPriority)
+		{
+			cout << "\t   Scheduling LowPrio Thread" << endl;
+			TCB* nextThread = lowPriority.front();
+			TCB* currentThreadRef = allThreads[currentThread];
+			cout << "\t  "<< nextThread->threadID << " " << allThreads[currentThread]->threadID << endl;
+			if(nextThread->threadID != allThreads[currentThread]->threadID)
+			{
+				cout << "\tLOW PRIO ERASE" << endl;
+	            lowPriority.erase(lowPriority.begin());
+	            nextThread->threadStackState = VM_THREAD_STATE_RUNNING;
+	            //old_context = &(allThreads[currentThread]->threadContext);
+	            //new_context = &(nextThread->threadContext);
+	            currentThread = nextThread->threadID;
+	            cout << "\t   " << &(currentThreadRef->threadContext) << " " << &(nextThread->threadContext) << endl;
+				MachineContextSwitch( &(currentThreadRef->threadContext),&(nextThread->threadContext) );
+			}
+		}
+	}
+	else if(allThreads[currentThread]->threadStackState != VM_THREAD_STATE_RUNNING)
+	{
+		cout << "\t   idle thread" << endl;
+		//old_context = &(currentThread->threadContext);
+		TCB* currentThreadRef = allThreads[currentThread];
+		currentThread=0;
+		MachineContextSwitch( &(currentThreadRef->threadContext), &(allThreads[0]->threadContext) );
+		cout << "\t   end idle" << endl;
+	}
