@@ -16,8 +16,6 @@ OBJS=$(OBJDIR)/Machine.o \
      $(OBJDIR)/VirtualMachineUtils.o \
      $(OBJDIR)/VirtualMachine.o \
      $(OBJDIR)/main.o
-
-MODOBJS=$(OBJDIR)/module.o
      
      
 #DEBUG_MODE=TRUE
@@ -50,7 +48,7 @@ APPLDFLAGS += $(DEFINES) $(INCLUDES) -shared -rdynamic -Wl,-E
 endif
 
 all: $(BINDIR)/vm 
-apps: $(BINDIR)/hello.so $(BINDIR)/sleep.so $(BINDIR)/file.so $(BINDIR)/thread.so $(BINDIR)/mutex.so 
+apps: $(BINDIR)/hello.so $(BINDIR)/sleep.so $(BINDIR)/file.so $(BINDIR)/thread.so $(BINDIR)/mutex.so $(BINDIR)/memory.so $(BINDIR)/shell.so 
 
 $(BINDIR)/vm: $(OBJS)
 	$(CXX) $(OBJS) $(LDFLAGS) -o $(BINDIR)/vm
