@@ -19,9 +19,12 @@
 #include <vector>
 
 using namespace std;
+// dont do p3 version of fileopen and fileclose
+// otherwise memory stuff from p3 is needed yes
+// anything with shared mem should DEF need to be in this
 
-//TVMTick threadTick;
-//TCB* currentThread=NULL;
+// run like this: ./vm -f fat.ima ./app.so
+
 int currentThread=-1;
 
 vector<TCB*> highPriority;
@@ -32,16 +35,107 @@ vector<TCB*> ready;
 vector<TCB*> sleeping;
 vector<TCB*> allThreads;
 
-//SMachineContextRef old_context;
-//SMachineContextRef new_context;
-
-TVMMainEntry VMLoadModule(const char *module);
+extern "C"
+{ TVMMainEntry VMLoadModule(const char *module); }
 
 #define VM_THREAD_PRIORITY_LOWEST		((TVMThreadPriority)0x00)
+//---------------------------------------------------------------------------//
+//----------------------------   MEMORY STUFF   -----------------------------//
+//---------------------------------------------------------------------------//
+
+
+
+//---------------------------------------------------------------------------//
+//----------------------------   MUTEX STUFF   ------------------------------//
+//---------------------------------------------------------------------------//
+
+
+
+//---------------------------------------------------------------------------//
+//-----------------------------   FILE STUFF   ------------------------------//
+//---------------------------------------------------------------------------//
+
+	extern "C" TVMStatus VMFileClose(int filedescriptor)
+	{
+		TMachineSignalState OldState;
+		MachineSuspendSignals(&OldState);
+
+		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+		//MachineFileClose(filedescriptor, fileCallBack,
+		//  (void*)allThreads[currentThread]);
+
+		MachineResumeSignals(&OldState);
+		return VM_STATUS_SUCCESS;
+
+	} // end FileClose -----------------------------------------------//
+
+
+	extern "C" TVMStatus VMFileOpen(const char *filename, int flags, int mode,
+		int *filedescriptor)
+	{
+	  if (filename == NULL || filedescriptor == NULL)
+	  	return VM_STATUS_ERROR_INVALID_PARAMETER;
+	  allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+	  *filedescriptor = open(filename, flags, mode);
+
+	  return VM_STATUS_SUCCESS;
+
+	} // end FileOpen ------------------------------------------------//
+
+
+	extern "C" TVMStatus VMFileRead(int filedescriptor, void *data, int *length)
+	{
+		if(data == NULL || length == NULL)
+			return VM_STATUS_ERROR_INVALID_PARAMETER;
+
+		TMachineSignalState OldState;
+		MachineSuspendSignals(&OldState);
+		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+
+		// do read
+
+		// schedule
+
+		MachineResumeSignals(&OldState);
+	  	return VM_STATUS_SUCCESS;
+	} // end FileRead ------------------------------------------------//
+
+
+	extern "C" TVMStatus VMFileSeek(int filedescriptor, int offset, int whence,
+		int *newoffset)
+	{
+	  TMachineSignalState OldState;
+		MachineSuspendSignals(&OldState);
+		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+
+		// do seek
+
+		// schedule
+
+		MachineResumeSignals(&OldState);
+	  return VM_STATUS_SUCCESS;
+
+	} // end FileSeek ------------------------------------------------//
+
+
+	extern "C" TVMStatus VMFileWrite(int filedescriptor, void *data, int *length)
+	{
+		TMachineSignalState OldState;
+		MachineSuspendSignals(&OldState);
+		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+	  	int len = *length;
+	  	write(filedescriptor, data, len);
+		MachineResumeSignals(&OldState);
+
+	  	return VM_STATUS_SUCCESS;
+	} // end FileWrite -----------------------------------------------//
+
+
 
 //---------------------------------------------------------------------------//
 //----------------------------   THREAD STUFF   -----------------------------//
 //---------------------------------------------------------------------------//
+
 
 extern "C" void printStuff()
 {
@@ -271,10 +365,10 @@ extern "C" void VMThreadSkeleton(void *param)
 } // end  VMThreadSkeleton ----------------------------------------//
 
 
-extern "C" TVMStatus VMStart(int tickms, int machinetickms, int argc,
-	char *argv[]) // DONE EXCEPT SLEEPCALLBACK
+TVMStatus VMStart(int tickms, TVMMemorySize heapsize, int machinetickms,
+	TVMMemorySize sharedsize, const char *mount, int argc, char *argv[])
 {
-	MachineInitialize(machinetickms);
+	MachineInitialize(machinetickms, sharedsize);
 	MachineRequestAlarm(tickms*1000, AlarmCallback, NULL);
 	MachineEnableSignals();
 
@@ -477,86 +571,6 @@ extern "C" TVMStatus VMThreadTerminate(TVMThreadID thread)
 
 } // end  VMThreadState -------------------------------------------//
 
-
-
-//---------------------------------------------------------------------------//
-//-----------------------------   FILE STUFF   ------------------------------//
-//---------------------------------------------------------------------------//
-
-	extern "C" TVMStatus VMFileClose(int filedescriptor)
-	{
-		TMachineSignalState OldState;
-		MachineSuspendSignals(&OldState);
-
-		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
-		//MachineFileClose(filedescriptor, fileCallBack,
-		//  (void*)allThreads[currentThread]);
-
-		MachineResumeSignals(&OldState);
-		return VM_STATUS_SUCCESS;
-
-	} // end FileClose -----------------------------------------------//
-
-
-	extern "C" TVMStatus VMFileOpen(const char *filename, int flags, int mode,
-		int *filedescriptor)
-	{
-	  if (filename == NULL || filedescriptor == NULL)
-	  	return VM_STATUS_ERROR_INVALID_PARAMETER;
-	  allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
-	  *filedescriptor = open(filename, flags, mode);
-
-	  return VM_STATUS_SUCCESS;
-
-	} // end FileOpen ------------------------------------------------//
-
-
-	extern "C" TVMStatus VMFileRead(int filedescriptor, void *data, int *length)
-	{
-		if(data == NULL || length == NULL)
-			return VM_STATUS_ERROR_INVALID_PARAMETER;
-
-		TMachineSignalState OldState;
-		MachineSuspendSignals(&OldState);
-		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
-
-		// do read
-
-		// schedule
-
-		MachineResumeSignals(&OldState);
-	  	return VM_STATUS_SUCCESS;
-	} // end FileRead ------------------------------------------------//
-
-
-	extern "C" TVMStatus VMFileSeek(int filedescriptor, int offset, int whence,
-		int *newoffset)
-	{
-	  TMachineSignalState OldState;
-		MachineSuspendSignals(&OldState);
-		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
-
-		// do seek
-
-		// schedule
-
-		MachineResumeSignals(&OldState);
-	  return VM_STATUS_SUCCESS;
-
-	} // end FileSeek ------------------------------------------------//
-
-
-	extern "C" TVMStatus VMFileWrite(int filedescriptor, void *data, int *length)
-	{
-		TMachineSignalState OldState;
-		MachineSuspendSignals(&OldState);
-		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
-	  	int len = *length;
-	  	write(filedescriptor, data, len);
-		MachineResumeSignals(&OldState);
-
-	  	return VM_STATUS_SUCCESS;
-	} // end FileWrite -----------------------------------------------//
 
 //---------------------------------------------------------------------------//
 //--------------------------------   END   ----------------------------------//
