@@ -18,6 +18,7 @@ extern "C"
           void *              threadEntryParam;
           SMachineContext     threadContext;
           TVMTick             threadWaitTicks;
+          int                 fileResult;
      };
 
      TCB::TCB()
