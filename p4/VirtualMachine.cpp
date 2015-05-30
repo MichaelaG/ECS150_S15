@@ -62,11 +62,12 @@ extern "C"
 	{
 		TCB* tempThread = (TCB*)param;
 		tempThread->threadStackState = VM_THREAD_STATE_READY;
-		allThreads.push_back(tempThread);
+		//allThreads.push_back(tempThread);
 		VMPrioPush(tempThread);
 		tempThread->fileResult = result;
 		if ((allThreads[currentThread]->threadPriority < tempThread->threadPriority
-			&& allThreads[currentThread]->threadStackState == VM_THREAD_STATE_RUNNING))
+			&& allThreads[currentThread]->threadStackState == VM_THREAD_STATE_RUNNING)
+			|| allThreads[currentThread]->threadStackState != VM_THREAD_STATE_RUNNING)
 				VMSchedule();
 	}
 
@@ -115,9 +116,10 @@ extern "C"
 			allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
 		  //*filedescriptor = open(filename, flags, mode);
 			MachineFileOpen(filename, flags, mode, FileCallback, allThreads[currentThread]);
+			VMSchedule();
 			*filedescriptor = allThreads[currentThread]->fileResult;
 
-			VMSchedule();
+			//VMSchedule();
 
 			cout <<"\tfiledescriptor after MFileOpen = " << *filedescriptor << endl;
 			if (*filedescriptor != -1)
@@ -196,12 +198,25 @@ extern "C"
 	{
 		TMachineSignalState OldState;
 		MachineSuspendSignals(&OldState);
+		if(data == NULL || length == NULL)
+		{
+			MachineResumeSignals(&OldState);
+			return VM_STATUS_ERROR_INVALID_PARAMETER;
+		}
 		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
-	  	int len = *length;
-	  	write(filedescriptor, data, len);
-		MachineResumeSignals(&OldState);
-
-	  	return VM_STATUS_SUCCESS;
+		MachineFileWrite(filedescriptor, data, *length, FileCallback, allThreads[currentThread]);
+		VMSchedule();
+		filedescriptor = allThreads[currentThread]->fileResult;
+		if (filedescriptor != -1)
+		{
+			MachineResumeSignals(&OldState);
+			return VM_STATUS_SUCCESS;
+		}
+		else
+		{
+			MachineResumeSignals(&OldState);
+			return VM_STATUS_FAILURE;
+		}
 	} // end FileWrite -----------------------------------------------//
 
 
@@ -443,6 +458,7 @@ TVMStatus VMStart(int tickms, TVMMemorySize heapsize, int machinetickms,
 	TVMMemorySize sharedsize, const char *mount, int argc, char *argv[])
 {
 	MachineInitialize(machinetickms, sharedsize);
+	//MachineInitialize(machinetickms);
 	MachineRequestAlarm(tickms*1000, AlarmCallback, NULL);
 	MachineEnableSignals();
 
