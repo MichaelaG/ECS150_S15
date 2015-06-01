@@ -27,6 +27,10 @@ using namespace std;
 
 // run like this: ./vm -f fat.ima ./app.so
 
+
+
+
+///////////////////////////////     GLOBALS     //////////////////////////////
 int currentThread=-1;
 
 vector<TCB*> highPriority;
@@ -45,6 +49,8 @@ extern "C"
 
 #define VM_THREAD_PRIORITY_LOWEST		((TVMThreadPriority)0x00)
 const TVMMemoryPoolID VM_MEMORY_POOL_ID_SYSTEM = 0;
+
+
 //---------------------------------------------------------------------------//
 //----------------------------   MEMORY STUFF   -----------------------------//
 //---------------------------------------------------------------------------//
@@ -60,10 +66,10 @@ TVMStatus VMMemoryPoolCreate(void *base, TVMMemorySize size,
 		return VM_STATUS_ERROR_INVALID_PARAMETER;
 	}
 
-	*memory = allMemPools.size();
+	*memory = (TVMMemoryPoolID)allMemPools.size();
 
 	MemPool* newMemPool = new MemPool;
-	newMemPool->memID = allMemPools.size();
+	newMemPool->memID = *memory;
 	newMemPool->memStackPtr = (uint8_t*)base;
 	newMemPool->memStackSize = size;
 
@@ -71,6 +77,7 @@ TVMStatus VMMemoryPoolCreate(void *base, TVMMemorySize size,
 	newMemBlock->stackPtr = newMemPool->memStackPtr;
 	newMemBlock->size = newMemPool->memStackSize;
 	newMemPool->memFree.push_back(newMemBlock);
+
 	allMemPools.push_back(newMemPool);
 
 	MachineResumeSignals(&OldState);
@@ -88,18 +95,18 @@ TVMStatus VMMemoryPoolDelete(TVMMemoryPoolID memory)
 		return VM_STATUS_ERROR_INVALID_PARAMETER;
 	}
 
-		if(!allMemPools[memory]->memUsed.empty())
-		{
-			MachineResumeSignals(&OldState);
-			return VM_STATUS_ERROR_INVALID_STATE;
-		}
-		else
-		{
-			delete allMemPools[memory];
-			allMemPools[memory] = NULL;
-			MachineResumeSignals(&OldState);
-			return VM_STATUS_SUCCESS;
-		}
+	else if(!allMemPools[memory]->memUsed.empty())
+	{
+		MachineResumeSignals(&OldState);
+		return VM_STATUS_ERROR_INVALID_STATE;
+	}
+	else
+	{
+		delete allMemPools[memory];
+		allMemPools[memory] = NULL;
+		MachineResumeSignals(&OldState);
+		return VM_STATUS_SUCCESS;
+	}
 }
 
 TVMStatus VMMemoryPoolQuery(TVMMemoryPoolID memory, TVMMemorySizeRef bytesleft)
@@ -134,9 +141,9 @@ TVMStatus VMMemoryPoolAllocate(TVMMemoryPoolID memory, TVMMemorySize size, void 
 	newMemBlock->size = (size + 0x3F) & (~0x3F);
 	int counter = 0;
 
-	for (int i = 0; i < (int)allMemPools[memory]->memFree.size(); i++)\
+	for (int i = 0; i < (int)allMemPools[memory]->memFree.size(); i++)
 	{
-		counter = counter + 1;
+		counter=i;
 		if (allMemPools[memory]->memFree[i]->size >= newMemBlock->size)
 			break;
 	}
@@ -145,15 +152,27 @@ TVMStatus VMMemoryPoolAllocate(TVMMemoryPoolID memory, TVMMemorySize size, void 
 	{
 		MachineResumeSignals(&OldState);
 		return VM_STATUS_ERROR_INSUFFICIENT_RESOURCES;
-	}
+	}/*
+	int j=0;
+	for(j=0; j < (int)allMemPools[memory]->memUsed.size(); j++)
+		if(allMemPools[memory]->memUsed[j]->stackPtr > allMemPools[memory]->memFree[counter]->stackPtr)
+			break;
+
+	newMemBlock->stackPtr = allMemPools[memory]->memFree[counter]->stackPtr;
+	*pointer = newMemBlock->stackPtr;
+	allMemPools[memory]->memUsed.insert(allMemPools[memory]->memUsed[j], newMemBlock);
+	allMemPools[memory]->memFreeSpace -= newMemBlock->size;
+	if(allMemPools[memory]->memUsed[counter]->size == 0)
+		allMemPools[memory]->memFree.erase(allMemPools[memory]->memUsed[counter]);*/
+
 
 	*pointer = allMemPools[memory]->memFree[counter]->stackPtr;
 	newMemBlock->stackPtr = allMemPools[memory]->memFree[counter]->stackPtr;
 	allMemPools[memory]->memUsed.push_back(newMemBlock);
 	allMemPools[memory]->memFree[counter]->stackPtr =
-		allMemPools[memory]->memFree[counter]->stackPtr + newMemBlock->size;
+	allMemPools[memory]->memFree[counter]->stackPtr + newMemBlock->size;
 	allMemPools[memory]->memFree[counter]->size =
-		allMemPools[memory]->memFree[counter]->size - newMemBlock->size;
+	allMemPools[memory]->memFree[counter]->size - newMemBlock->size;
 
 	MachineResumeSignals(&OldState);
 	return VM_STATUS_SUCCESS;
@@ -245,9 +264,9 @@ TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
 		//allThreads.push_back(tempThread);
 		VMPrioPush(tempThread);
 		tempThread->fileResult = result;
-		/*if ((allThreads[currentThread]->threadPriority < tempThread->threadPriority
-			&& allThreads[currentThread]->threadStackState == VM_THREAD_STATE_RUNNING)
-			|| allThreads[currentThread]->threadStackState != VM_THREAD_STATE_RUNNING)*/
+		if ( allThreads[currentThread]->threadStackState == VM_THREAD_STATE_RUNNING
+			 && ( allThreads[currentThread]->threadPriority < tempThread->threadPriority
+			 || allThreads[currentThread]->threadStackState !=  VM_THREAD_STATE_RUNNING ) )
 				VMSchedule();
 	}
 
@@ -256,9 +275,11 @@ TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
 		TMachineSignalState OldState;
 		MachineSuspendSignals(&OldState);
 
-		MachineFileClose(filedescriptor, FileCallback, (void*)allThreads[currentThread]);
-		//filedescriptor = allThreads[currentThread]->fileResult;
 		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+
+		MachineFileClose(filedescriptor, FileCallback,
+			allThreads[currentThread]);
+		//filedescriptor = allThreads[currentThread]->fileResult;
 		VMSchedule();
 
 		if (allThreads[currentThread]->fileResult != -1)
@@ -281,24 +302,22 @@ TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
 		TMachineSignalState OldState;
 		MachineSuspendSignals(&OldState);
 
-	  if (filename == NULL || filedescriptor == NULL)
+		if (filename == NULL || filedescriptor == NULL)
 		{
 			MachineResumeSignals(&OldState);
-	  	return VM_STATUS_ERROR_INVALID_PARAMETER;
-	  }
+		  	return VM_STATUS_ERROR_INVALID_PARAMETER;
+		}
 		else
 		{
-			cout << "\tfiledescriptor before MFileOpen = " << *filedescriptor << endl;
-			MachineFileOpen(filename, flags, mode, FileCallback, (void*)allThreads[currentThread]);
+			//cout << "\tfiledescriptor before MFileOpen = " << *filedescriptor << endl;
 			allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
-		  //*filedescriptor = open(filename, flags, mode);
+			MachineFileOpen(filename, flags, mode, FileCallback,
+				allThreads[currentThread]);
+			//*filedescriptor = open(filename, flags, mode);
 			VMSchedule();
 			*filedescriptor = allThreads[currentThread]->fileResult;
-
-			//VMSchedule();
-
-			cout <<"\tfiledescriptor after MFileOpen = " << *filedescriptor << endl;
-			if (allThreads[currentThread]->fileResult != -1)
+			//cout <<"\tfiledescriptor after MFileOpen = " << *filedescriptor << endl;
+			if (*filedescriptor != -1)
 			{
 				MachineResumeSignals(&OldState);
 				return VM_STATUS_SUCCESS;
@@ -315,7 +334,6 @@ TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
 
 	extern "C" TVMStatus VMFileRead(int filedescriptor, void *data, int *length)
 	{
-
 		TMachineSignalState OldState;
 		MachineSuspendSignals(&OldState);
 
@@ -325,11 +343,40 @@ TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
 			return VM_STATUS_ERROR_INVALID_PARAMETER;
 		}
 
-		void* base;
-		int len = *length;
-		int buffer = 0;
+		void* base = NULL;
+		if(*length > 512)
+			VMMemoryPoolAllocate(1, 512, &base);
+		else
+			VMMemoryPoolAllocate(1, (TVMMemorySize)(*length), &base);
+		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+		int tempLength = *length;
+		*length = 0;
+		while(tempLength > 512)
+		{
+			if(tempLength > 512)
+			{
+				MachineFileRead(filedescriptor, base, 512,
+					FileCallback, allThreads[currentThread]);
+				VMSchedule();
+				memcpy(data, base, 512);
+				*length += allThreads[currentThread]->fileResult;
+			}
+			else
+			{
+				MachineFileRead(filedescriptor, base, tempLength,
+					FileCallback, allThreads[currentThread]);
+				VMSchedule();
+				memcpy(data, base, tempLength);
+				*length += allThreads[currentThread]->fileResult;
+			}
+			tempLength -= 512;
+			data += 512;
+		}
 
-		while (len > 0)
+		VMMemoryPoolDeallocate(1, base);
+
+
+		/*while (len > 0)
 		{
 			VMMemoryPoolAllocate(allMemPools[1]->memID, 512, (void**)&base);
 
@@ -351,9 +398,9 @@ TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
 
 		//filedescriptor = allThreads[currentThread]->fileResult;
 
-		//VMSchedule();
+		//VMSchedule();*/
 
-		if (allThreads[currentThread]->fileResult > 0)
+		if (*length > 0)
 		{
 			MachineResumeSignals(&OldState);
 			return VM_STATUS_SUCCESS;
@@ -370,11 +417,13 @@ TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
 	extern "C" TVMStatus VMFileSeek(int filedescriptor, int offset, int whence,
 		int *newoffset)
 	{
-	  TMachineSignalState OldState;
+		TMachineSignalState OldState;
 		MachineSuspendSignals(&OldState);
 
-		MachineFileSeek(filedescriptor, offset, whence, FileCallback, (void*)allThreads[currentThread]);
 		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+
+		MachineFileSeek(filedescriptor, offset, whence,
+			FileCallback, allThreads[currentThread]);
 
 		VMSchedule();
 
@@ -404,9 +453,36 @@ TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
 		}
 
 		void* base = NULL;
-		int len = *length;
-		int buffer = 0;
-		while(len > 0)
+		if(*length > 512)
+			VMMemoryPoolAllocate(1, 512, &base);
+		else
+			VMMemoryPoolAllocate(1, (TVMMemorySize)(*length), &base);
+		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+		int tempLength = *length;
+		//*length = 0;
+		while(tempLength > 0)
+		{
+			if(tempLength > 512)
+			{
+				memcpy(base, data, 512);
+				MachineFileWrite(filedescriptor, base, 512,
+					FileCallback, allThreads[currentThread]);
+				VMSchedule();
+			}
+			else
+			{
+				memcpy(base, data, tempLength);
+				MachineFileRead(filedescriptor, base, tempLength,
+					FileCallback, allThreads[currentThread]);
+				VMSchedule();
+			}
+			tempLength -= 512;
+			data += 512;
+		}
+
+		VMMemoryPoolDeallocate(1, base);
+		
+		/*while(len > 0)
 		{
 			VMMemoryPoolAllocate(allMemPools[1]->memID, 512, (void**)&base);
 			memset(base, '\0', 512);
@@ -426,7 +502,9 @@ TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
 
 		//MachineFileWrite(filedescriptor, data, *length, FileCallback, (void*)allThreads[currentThread]);
 		//VMSchedule();
-		//filedescriptor = allThreads[currentThread]->fileResult;
+		//filedescriptor = allThreads[currentThread]->fileResult;*/
+
+
 		if (allThreads[currentThread]->fileResult != -1)
 		{
 			MachineResumeSignals(&OldState);

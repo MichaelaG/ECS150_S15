@@ -5,12 +5,12 @@
 
 using namespace std;
 
-extern "C" {
-
+extern "C"
+{
   typedef struct MemBlock
   {
-    uint8_t *stackPtr;
-    TVMMemorySize size;
+    uint8_t *stackPtr; //*base
+    TVMMemorySize size; //length
   } MemBlock;
 
   class MemPool
@@ -18,13 +18,13 @@ extern "C" {
   public:
     MemPool();
 
-    TVMMemorySize memStackSize;
+    TVMMemorySize memStackSize; //memory_pool_size
     TVMMemorySize memFreeSpace;
-    TVMMemoryPoolID memID;
-    uint8_t* memStackPtr;
+    TVMMemoryPoolID memID;  //memory_pool_id
+    uint8_t* memStackPtr;  //*base
 
-    vector<MemBlock*> memFree;
-    vector<MemBlock*> memUsed;
+    vector<MemBlock*> memFree;  //free_list
+    vector<MemBlock*> memUsed;  //alloc_list
   };
 
   MemPool::MemPool()
@@ -33,6 +33,14 @@ extern "C" {
     memID = 0;
     memStackPtr = 0;
   }
+
+
+  //BPB Struct Defn
+
+
+
+  //Root Entry Struct Defn
+
 
 } // end extern C
 
