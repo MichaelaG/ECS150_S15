@@ -1,11 +1,13 @@
 #include "VirtualMachine.h"
 #include "Machine.h"
 #include "TCB.h"
+#include "MemPool.h"
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <termios.h>
 #include <ctype.h>
+#include <cstring>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -35,15 +37,193 @@ vector<TCB*> lowPriority;
 vector<TCB*> sleeping;
 vector<TCB*> allThreads;
 
+vector<MemPool*> allMemPools;
+void* sharedSpace;
+
 extern "C"
 { TVMMainEntry VMLoadModule(const char *module); }
 
 #define VM_THREAD_PRIORITY_LOWEST		((TVMThreadPriority)0x00)
+const TVMMemoryPoolID VM_MEMORY_POOL_ID_SYSTEM = 0;
 //---------------------------------------------------------------------------//
 //----------------------------   MEMORY STUFF   -----------------------------//
 //---------------------------------------------------------------------------//
 
+TVMStatus VMMemoryPoolCreate(void *base, TVMMemorySize size,
+	TVMMemoryPoolIDRef memory)
+{
+	TMachineSignalState OldState;
+	MachineSuspendSignals(&OldState);
+	if (base == NULL || memory == NULL || size == 0)
+	{
+		MachineResumeSignals(&OldState);
+		return VM_STATUS_ERROR_INVALID_PARAMETER;
+	}
 
+	*memory = allMemPools.size();
+
+	MemPool* newMemPool = new MemPool;
+	newMemPool->memID = allMemPools.size();
+	newMemPool->memStackPtr = (uint8_t*)base;
+	newMemPool->memStackSize = size;
+
+	MemBlock* newMemBlock = new MemBlock;
+	newMemBlock->stackPtr = newMemPool->memStackPtr;
+	newMemBlock->size = newMemPool->memStackSize;
+	newMemPool->memFree.push_back(newMemBlock);
+	allMemPools.push_back(newMemPool);
+
+	MachineResumeSignals(&OldState);
+	return VM_STATUS_SUCCESS;
+}
+
+TVMStatus VMMemoryPoolDelete(TVMMemoryPoolID memory)
+{
+	TMachineSignalState OldState;
+	MachineSuspendSignals(&OldState);
+
+	if(allMemPools[memory] == NULL)
+	{
+		MachineResumeSignals(&OldState);
+		return VM_STATUS_ERROR_INVALID_PARAMETER;
+	}
+
+		if(!allMemPools[memory]->memUsed.empty())
+		{
+			MachineResumeSignals(&OldState);
+			return VM_STATUS_ERROR_INVALID_STATE;
+		}
+		else
+		{
+			delete allMemPools[memory];
+			allMemPools[memory] = NULL;
+			MachineResumeSignals(&OldState);
+			return VM_STATUS_SUCCESS;
+		}
+}
+
+TVMStatus VMMemoryPoolQuery(TVMMemoryPoolID memory, TVMMemorySizeRef bytesleft)
+{
+	TMachineSignalState OldState;
+	MachineSuspendSignals(&OldState);
+
+	if (allMemPools[memory] == NULL || bytesleft == NULL)
+	{
+		MachineResumeSignals(&OldState);
+		return VM_STATUS_ERROR_INVALID_ID;
+	}
+
+	*bytesleft = allMemPools[memory]->memFreeSpace;
+
+	MachineResumeSignals(&OldState);
+	return VM_STATUS_SUCCESS;
+}
+
+TVMStatus VMMemoryPoolAllocate(TVMMemoryPoolID memory, TVMMemorySize size, void **pointer)
+{
+	TMachineSignalState OldState;
+	MachineSuspendSignals(&OldState);
+
+	if (allMemPools[memory] == NULL || size == 0 || pointer == NULL)
+	{
+		MachineResumeSignals(&OldState);
+		return VM_STATUS_ERROR_INVALID_PARAMETER;
+	}
+
+	MemBlock* newMemBlock = new MemBlock;
+	newMemBlock->size = (size + 0x3F) & (~0x3F);
+	int counter = 0;
+
+	for (int i = 0; i < (int)allMemPools[memory]->memFree.size(); i++)\
+	{
+		counter = counter + 1;
+		if (allMemPools[memory]->memFree[i]->size >= newMemBlock->size)
+			break;
+	}
+
+	if (allMemPools[memory]->memFree[counter]->size < newMemBlock->size)
+	{
+		MachineResumeSignals(&OldState);
+		return VM_STATUS_ERROR_INSUFFICIENT_RESOURCES;
+	}
+
+	*pointer = allMemPools[memory]->memFree[counter]->stackPtr;
+	newMemBlock->stackPtr = allMemPools[memory]->memFree[counter]->stackPtr;
+	allMemPools[memory]->memUsed.push_back(newMemBlock);
+	allMemPools[memory]->memFree[counter]->stackPtr =
+		allMemPools[memory]->memFree[counter]->stackPtr + newMemBlock->size;
+	allMemPools[memory]->memFree[counter]->size =
+		allMemPools[memory]->memFree[counter]->size - newMemBlock->size;
+
+	MachineResumeSignals(&OldState);
+	return VM_STATUS_SUCCESS;
+}
+
+TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
+{
+	TMachineSignalState OldState;
+	MachineSuspendSignals(&OldState);
+
+	if (allMemPools[memory] == NULL || pointer == NULL)
+	{
+		MachineResumeSignals(&OldState);
+		return VM_STATUS_ERROR_INVALID_PARAMETER;
+	}
+
+	MemPool* tempMemPool = allMemPools[memory];
+	int counter = 0;
+	for (int i = 0; i < (int)tempMemPool->memUsed.size(); i++)
+	{
+		if (tempMemPool->memUsed[i] != NULL)
+		{
+			counter = counter + 1;
+			if (tempMemPool->memUsed[i]->stackPtr == (uint8_t*)pointer)
+				break;
+		}
+	}
+
+	if (counter == (int)tempMemPool->memUsed.size())
+	{
+		MachineResumeSignals(&OldState);
+		return VM_STATUS_ERROR_INVALID_PARAMETER;
+	}
+
+	int flag = 0;
+	for (int i = 0; i < (int)tempMemPool->memFree.size(); i++)
+	{
+		flag = 0;
+		if ((tempMemPool->memFree[i]->stackPtr + tempMemPool->memFree[i]->size)
+			== tempMemPool->memUsed[counter]->stackPtr)
+		{
+			tempMemPool->memFree[i]->size = tempMemPool->memFree[i]->size
+				+ tempMemPool->memUsed[counter]->size;
+			flag = 1;
+			break;
+		}
+		if (tempMemPool->memFree[i]->size != 0)
+		{
+			if ((tempMemPool->memUsed[counter]->stackPtr + tempMemPool->memUsed[counter]->size)
+				== tempMemPool->memFree[i]->stackPtr)
+			{
+				tempMemPool->memFree[i]->size = tempMemPool->memFree[i]->size
+					+ tempMemPool->memUsed[counter]->size;
+				tempMemPool->memFree[i]->size = tempMemPool->memUsed[i]->size;
+				flag = 1;
+				break;
+			}
+		}
+	}
+
+	if (flag == 0)
+		tempMemPool->memFree.push_back(tempMemPool->memUsed[counter]);
+
+	tempMemPool->memFreeSpace = tempMemPool->memFreeSpace
+		+ tempMemPool->memUsed[counter]->size;
+	tempMemPool->memUsed.erase(tempMemPool->memUsed.begin() + counter);
+
+	MachineResumeSignals(&OldState);
+	return VM_STATUS_SUCCESS;
+}
 
 //---------------------------------------------------------------------------//
 //----------------------------   MUTEX STUFF   ------------------------------//
@@ -65,9 +245,9 @@ extern "C"
 		//allThreads.push_back(tempThread);
 		VMPrioPush(tempThread);
 		tempThread->fileResult = result;
-		if ((allThreads[currentThread]->threadPriority < tempThread->threadPriority
+		/*if ((allThreads[currentThread]->threadPriority < tempThread->threadPriority
 			&& allThreads[currentThread]->threadStackState == VM_THREAD_STATE_RUNNING)
-			|| allThreads[currentThread]->threadStackState != VM_THREAD_STATE_RUNNING)
+			|| allThreads[currentThread]->threadStackState != VM_THREAD_STATE_RUNNING)*/
 				VMSchedule();
 	}
 
@@ -76,13 +256,12 @@ extern "C"
 		TMachineSignalState OldState;
 		MachineSuspendSignals(&OldState);
 
+		MachineFileClose(filedescriptor, FileCallback, (void*)allThreads[currentThread]);
+		//filedescriptor = allThreads[currentThread]->fileResult;
 		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
-		MachineFileClose(filedescriptor, FileCallback, allThreads[currentThread]);
-		filedescriptor = allThreads[currentThread]->fileResult;
-
 		VMSchedule();
 
-		if (filedescriptor != -1)
+		if (allThreads[currentThread]->fileResult != -1)
 		{
 			MachineResumeSignals(&OldState);
 			return VM_STATUS_SUCCESS;
@@ -92,9 +271,6 @@ extern "C"
 			MachineResumeSignals(&OldState);
 			return VM_STATUS_FAILURE;
 		}
-
-		MachineResumeSignals(&OldState);
-		return VM_STATUS_SUCCESS;
 
 	} // end FileClose -----------------------------------------------//
 
@@ -113,16 +289,16 @@ extern "C"
 		else
 		{
 			cout << "\tfiledescriptor before MFileOpen = " << *filedescriptor << endl;
+			MachineFileOpen(filename, flags, mode, FileCallback, (void*)allThreads[currentThread]);
 			allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
 		  //*filedescriptor = open(filename, flags, mode);
-			MachineFileOpen(filename, flags, mode, FileCallback, allThreads[currentThread]);
 			VMSchedule();
 			*filedescriptor = allThreads[currentThread]->fileResult;
 
 			//VMSchedule();
 
 			cout <<"\tfiledescriptor after MFileOpen = " << *filedescriptor << endl;
-			if (*filedescriptor != -1)
+			if (allThreads[currentThread]->fileResult != -1)
 			{
 				MachineResumeSignals(&OldState);
 				return VM_STATUS_SUCCESS;
@@ -148,14 +324,36 @@ extern "C"
 			MachineResumeSignals(&OldState);
 			return VM_STATUS_ERROR_INVALID_PARAMETER;
 		}
-		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
-		MachineFileRead(filedescriptor, data, *length, FileCallback, allThreads[currentThread]);
 
-		filedescriptor = allThreads[currentThread]->fileResult;
+		void* base;
+		int len = *length;
+		int buffer = 0;
 
-		VMSchedule();
+		while (len > 0)
+		{
+			VMMemoryPoolAllocate(allMemPools[1]->memID, 512, (void**)&base);
 
-		if (filedescriptor != -1)
+			buffer = len;
+			if (len > 512)
+				buffer = 512;
+
+			MachineFileRead(filedescriptor, base, buffer, FileCallback, (void*)allThreads[currentThread]);
+			allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+			VMSchedule();
+			memcpy(data, base, buffer);
+
+			VMMemoryPoolDeallocate(allMemPools[1]->memID, base);
+
+			len = len - 512;
+			data = data + 512;
+		}
+		//MachineFileRead(filedescriptor, data, *length, FileCallback, (void*)allThreads[currentThread]);
+
+		//filedescriptor = allThreads[currentThread]->fileResult;
+
+		//VMSchedule();
+
+		if (allThreads[currentThread]->fileResult > 0)
 		{
 			MachineResumeSignals(&OldState);
 			return VM_STATUS_SUCCESS;
@@ -174,9 +372,10 @@ extern "C"
 	{
 	  TMachineSignalState OldState;
 		MachineSuspendSignals(&OldState);
+
+		MachineFileSeek(filedescriptor, offset, whence, FileCallback, (void*)allThreads[currentThread]);
 		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
 
-		MachineFileSeek(filedescriptor, offset, whence, FileCallback, allThreads[currentThread]);
 		VMSchedule();
 
 		if (newoffset != NULL)
@@ -203,13 +402,35 @@ extern "C"
 			MachineResumeSignals(&OldState);
 			return VM_STATUS_ERROR_INVALID_PARAMETER;
 		}
-		allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
-		MachineFileWrite(filedescriptor, data, *length, FileCallback, allThreads[currentThread]);
-		VMSchedule();
-		filedescriptor = allThreads[currentThread]->fileResult;
-		if (filedescriptor != -1)
+
+		void* base = NULL;
+		int len = *length;
+		int buffer = 0;
+		while(len > 0)
+		{
+			VMMemoryPoolAllocate(allMemPools[1]->memID, 512, (void**)&base);
+			memset(base, '\0', 512);
+			buffer = len;
+			if (len > 512)
+				buffer = 512;
+
+			memcpy(base, data, buffer);
+			MachineFileWrite(filedescriptor, base, buffer, FileCallback, (void*)allThreads[currentThread]);
+			allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+			VMSchedule();
+
+			VMMemoryPoolDeallocate(allMemPools[1]->memID, base);
+			len = len - 512;
+			data = data + 512;
+		}
+
+		//MachineFileWrite(filedescriptor, data, *length, FileCallback, (void*)allThreads[currentThread]);
+		//VMSchedule();
+		//filedescriptor = allThreads[currentThread]->fileResult;
+		if (allThreads[currentThread]->fileResult != -1)
 		{
 			MachineResumeSignals(&OldState);
+			*length = allThreads[currentThread]->fileResult;
 			return VM_STATUS_SUCCESS;
 		}
 		else
@@ -457,7 +678,9 @@ extern "C" void VMThreadSkeleton(void *param)
 TVMStatus VMStart(int tickms, TVMMemorySize heapsize, int machinetickms,
 	TVMMemorySize sharedsize, const char *mount, int argc, char *argv[])
 {
-	MachineInitialize(machinetickms, sharedsize);
+	uint8_t *image;
+	sharedsize = (sharedsize + 0x1000) & (~0x1000);
+	sharedSpace = MachineInitialize(machinetickms, sharedsize);
 	//MachineInitialize(machinetickms);
 	MachineRequestAlarm(tickms*1000, AlarmCallback, NULL);
 	MachineEnableSignals();
@@ -485,6 +708,46 @@ TVMStatus VMStart(int tickms, TVMMemorySize heapsize, int machinetickms,
 		tIdle->threadStackSize);
 
 	TVMMainEntry VMMain = VMLoadModule(argv[0]);
+
+	MemPool* mainMemPool = new MemPool;
+	mainMemPool->memStackSize = heapsize;
+	mainMemPool->memStackPtr = new uint8_t[heapsize];
+	mainMemPool->memFreeSpace = heapsize;
+	mainMemPool->memID = allMemPools.size();
+
+	MemBlock* mainMemBlock = new MemBlock;
+	mainMemBlock->stackPtr = mainMemPool->memStackPtr;
+	mainMemBlock->size = mainMemPool->memStackSize;
+	mainMemPool->memFree.push_back(mainMemBlock);
+	allMemPools.push_back(mainMemPool);
+
+	MemPool* sharedMemPool = new MemPool;
+	sharedMemPool->memStackSize = sharedsize;
+	sharedMemPool->memStackPtr = (uint8_t*)sharedSpace;
+	sharedMemPool->memFreeSpace = sharedsize;
+	sharedMemPool->memID = allMemPools.size();
+	allMemPools.push_back(sharedMemPool);
+
+	MemBlock* sharedMemBlock = new MemBlock;
+	sharedMemBlock->stackPtr = sharedMemPool->memStackPtr;
+	sharedMemBlock->size = sharedMemPool->memStackSize;
+	sharedMemPool->memFree.push_back(sharedMemBlock);
+
+	MachineFileOpen(mount, O_RDWR, 0644, FileCallback, (void*)allThreads[currentThread]);
+	allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+	VMSchedule();
+
+	allThreads[currentThread]->threadStackState = VM_THREAD_STATE_WAITING;
+	void* basePtr = NULL;
+	VMMemoryPoolAllocate(allMemPools[1]->memID, 512, (void**)&basePtr);
+
+	MachineFileRead(allThreads[currentThread]->fileResult, basePtr, 512, FileCallback,
+		(void*)allThreads[currentThread]);
+	VMSchedule();
+
+	VMMemoryPoolDeallocate(allMemPools[1]->memID, basePtr);
+
+
 	if (VMMain != NULL)
 	{
 		VMMain(argc, argv);
